@@ -21,8 +21,8 @@ jobs:
       OPSASSIST_DATABASE_URL: postgresql+psycopg://opsassist:opsassist@localhost:5432/opsassist
       OPSASSIST_REDIS_URL: redis://localhost:6379/0
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
       - run: uv sync --frozen
       - run: uv run ruff check src tests migrations
       - run: uv run ruff format --check src tests migrations
@@ -30,9 +30,14 @@ jobs:
       - run: uv run pytest -m "not integration"
       - run: uv run alembic upgrade head && uv run python -m opsassist.seed
       - name: API smoke + integration tests
+        # Start the server from the venv directly (not `uv run`) and always stop it:
+        # a leftover process holds uv's cache lock and breaks setup-uv's post-job cache prune.
         run: |
-          uv run uvicorn opsassist.main:create_app --factory --port 8000 &
+          .venv/bin/uvicorn opsassist.main:create_app --factory --port 8000 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null; wait $SERVER_PID 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do curl -sf localhost:8000/readyz && break; sleep 1; done
+          curl -sf localhost:8000/readyz
           uv run pytest -m integration
       - name: Container build
         run: docker build -t opsassist:ci .
