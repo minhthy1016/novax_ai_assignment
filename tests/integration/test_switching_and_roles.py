@@ -29,15 +29,16 @@ def test_switching_models_keeps_the_conversation(api: httpx.Client, u001: dict[s
     first = chat(api, u001, "When may we deploy to production?", model="mock/echo")
     conv = first["conversation_id"]
 
+    # Same question after the switch: same retrieved sources, so the only difference in the
+    # prompt is the carried-over history - proof the new model received the conversation.
     second = chat(
         api,
         u001,
-        "When should we roll back a deployment?",
+        "When may we deploy to production?",
         model="mock/echo-alt",
         conversation_id=conv,
     )
     assert second["model"]["id"] == "mock/echo-alt"
-    # The switched-to model received the earlier turns as history.
     assert second["usage"]["prompt_tokens"] > first["usage"]["prompt_tokens"]
 
     # No model given: the conversation keeps its current one.
