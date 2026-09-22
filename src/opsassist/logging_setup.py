@@ -9,21 +9,43 @@ of defence; callers must still avoid logging secrets in the first place.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from collections.abc import MutableMapping
+from itertools import pairwise
 from typing import Any
 
 import structlog
 
-_SENSITIVE_KEY_PARTS = ("password", "secret", "token", "api_key", "apikey", "authorization")
+# Matched against whole words of a key (split on "_" / "-"), not substrings: "access_token"
+# and "jwt_secret" are redacted, but usage counters like "prompt_tokens" are not.
+_SENSITIVE_WORDS = frozenset(
+    {
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "apikey",
+        "authorization",
+        "credential",
+        "credentials",
+    }
+)
 REDACTED = "[REDACTED]"
+
+
+def is_sensitive_key(key: str) -> bool:
+    words = re.split(r"[_\-]+", key.lower())
+    if any(w in _SENSITIVE_WORDS for w in words):
+        return True
+    return any(a == "api" and b == "key" for a, b in pairwise(words))
 
 
 def redact_sensitive(
     _logger: Any, _method: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
     for key in list(event_dict):
-        if any(part in key.lower() for part in _SENSITIVE_KEY_PARTS):
+        if is_sensitive_key(key):
             event_dict[key] = REDACTED
     return event_dict
 

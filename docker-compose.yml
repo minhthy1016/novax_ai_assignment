@@ -7,6 +7,9 @@ x-app-env: &app-env
   OPSASSIST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opsassist}:${POSTGRES_PASSWORD:-opsassist}@postgres:5432/${POSTGRES_DB:-opsassist}
   OPSASSIST_REDIS_URL: redis://redis:6379/0
   OPSASSIST_JWT_SECRET: ${OPSASSIST_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}
+  # Provider keys are read from the caller's environment or .env; never written here.
+  NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
 services:
   postgres:
@@ -47,6 +50,7 @@ services:
     build: .
     environment: *app-env
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    extra_hosts: ["host.docker.internal:host-gateway"]  # reach Ollama on the host (Linux too)
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
