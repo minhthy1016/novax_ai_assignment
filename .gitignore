@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Brief is the employer's document; keep it out of the submission repo
+docs/brief/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Eval outputs (reports are committed deliberately under evaluation/reports/)
+evaluation/runs/

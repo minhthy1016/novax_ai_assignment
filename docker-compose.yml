@@ -1,0 +1,57 @@
+# Local reproducible deployment. Ports bind to 127.0.0.1 only (safe default).
+# Optional profiles (added later): `observability` (Opik + Prometheus), `ui` (Flowise demo client).
+
+x-app-env: &app-env
+  OPSASSIST_ENV: ${OPSASSIST_ENV:-dev}
+  OPSASSIST_LOG_LEVEL: ${OPSASSIST_LOG_LEVEL:-INFO}
+  OPSASSIST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opsassist}:${POSTGRES_PASSWORD:-opsassist}@postgres:5432/${POSTGRES_DB:-opsassist}
+  OPSASSIST_REDIS_URL: redis://redis:6379/0
+  OPSASSIST_JWT_SECRET: ${OPSASSIST_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-opsassist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opsassist}
+      POSTGRES_DB: ${POSTGRES_DB:-opsassist}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: apply migrations, then seed identity/inventory fixtures. API waits for success.
+  migrate:
+    build: .
+    environment: *app-env
+    command: ["sh", "-c", "alembic upgrade head && python -m opsassist.seed"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  api:
+    build: .
+    environment: *app-env
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

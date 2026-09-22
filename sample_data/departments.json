@@ -1,0 +1,8 @@
+[
+  {"slug": "company", "name": "Company-wide"},
+  {"slug": "engineering", "name": "Engineering"},
+  {"slug": "hr", "name": "HR"},
+  {"slug": "it_ops", "name": "IT Operations"},
+  {"slug": "finance", "name": "Finance"},
+  {"slug": "ai_platform", "name": "AI Platform"}
+]

@@ -1,0 +1,14 @@
+[
+  {"id": "U001", "name": "Aisha Rahman", "department": "engineering", "role": "Senior Engineer",
+   "permissions": ["docs:engineering", "server:read", "ticket:create"]},
+  {"id": "U002", "name": "Daniel Lee", "department": "engineering", "role": "Engineering Manager",
+   "permissions": ["docs:engineering", "server:read", "ticket:create", "vpn:approve"]},
+  {"id": "U003", "name": "Mei Lin Wong", "department": "hr", "role": "HR Executive",
+   "permissions": ["docs:hr", "ticket:create"]},
+  {"id": "U004", "name": "Farid Ismail", "department": "hr", "role": "HR Manager",
+   "permissions": ["docs:hr", "ticket:create", "hr:confidential"]},
+  {"id": "U005", "name": "Priya Nair", "department": "it_ops", "role": "System Administrator",
+   "permissions": ["docs:it", "server:read", "ticket:create", "vpn:create"]},
+  {"id": "U006", "name": "John Tan", "department": "finance", "role": "Finance Analyst",
+   "permissions": ["docs:finance", "ticket:create"]}
+]
