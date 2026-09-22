@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 ModelKind = Literal["chat", "embedding"]
-ProviderKind = Literal["openai_compatible", "ollama", "mock"]
+ProviderKind = Literal["openai_compatible", "ollama", "anthropic", "mock"]
 
 
 class ProviderConfig(BaseModel):
@@ -50,6 +50,8 @@ class ModelSpec(BaseModel):
     dimensions: int | None = None
     input_usd_per_mtok: Decimal = Decimal(0)
     output_usd_per_mtok: Decimal = Decimal(0)
+    # Newer Claude models (Opus 4.7+, Sonnet 5) reject sampling parameters outright.
+    supports_temperature: bool = True
 
     def estimate_cost_usd(self, prompt_tokens: int, completion_tokens: int) -> Decimal:
         million = Decimal(1_000_000)
@@ -68,6 +70,9 @@ class Catalog(BaseModel):
     models: list[ModelSpec]
     routes: dict[str, list[str]]
     defaults: Defaults
+    # The chat models end users pick from (and switch between mid-conversation). Choosing
+    # one puts it first; the other picker models follow as fallbacks, in this order.
+    selectable: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_references(self) -> Catalog:
@@ -95,6 +100,11 @@ class Catalog(BaseModel):
                     f"embedding route {name!r} must have exactly one model: "
                     "vectors from different models are not comparable"
                 )
+        for model_id in self.selectable:
+            if model_id not in by_id or by_id[model_id].kind != "chat":
+                raise ValueError(f"selectable entry {model_id!r} is not a chat model")
+        if len(set(self.selectable)) != len(self.selectable):
+            raise ValueError("selectable contains duplicates")
         for kind, route in (("chat", self.defaults.chat), ("embedding", self.defaults.embedding)):
             if route not in self.routes:
                 raise ValueError(f"default {kind} route {route!r} is not defined")
@@ -111,10 +121,14 @@ class Catalog(BaseModel):
     def resolve(self, name: str | None, kind: ModelKind) -> tuple[str, list[ModelSpec]]:
         """Resolve a route name or a model id to an ordered list of targets.
 
-        A bare model id resolves to a single-target chain (no fallback): the caller asked
-        for that model specifically.
+        A picker (``selectable``) model resolves to itself followed by the other picker
+        models as fallbacks. Any other bare model id resolves to a single-target chain (no
+        fallback): the caller asked for that model specifically.
         """
         route = name or (self.defaults.chat if kind == "chat" else self.defaults.embedding)
+        if kind == "chat" and route in self.selectable:
+            ordered = [route, *(m for m in self.selectable if m != route)]
+            return route, [self.model(m) for m in ordered]
         if route in self.routes:
             targets = [self.model(t) for t in self.routes[route]]
         else:
@@ -140,7 +154,23 @@ class Catalog(BaseModel):
             models=models,
             routes=routes,
             defaults=self.defaults,
+            selectable=[m for m in self.selectable if m in kept],
         )
+
+    def check_choice(self, name: str | None, *, allow_any: bool) -> None:
+        """Validate a client-supplied chat model choice.
+
+        End users may choose only picker models (or omit the field for the default).
+        ``allow_any`` (dev/test only) also admits routes and non-picker ids such as the mock
+        failure models used by tests and the provider-failure demo.
+        """
+        if name is None or name in self.selectable:
+            return
+        if not allow_any:
+            raise UnknownModelError(
+                name, f"model {name!r} is not selectable; choose one of {self.selectable}"
+            )
+        self.resolve(name, "chat")
 
 
 class UnknownModelError(ValueError):

@@ -1,7 +1,8 @@
 """ORM models.
 
 Tables arrive with the features that own them, each in its own migration, so the schema
-history mirrors the build order: 0001 identity + inventory, 0002 conversations + usage.
+history mirrors the build order: 0001 identity + inventory, 0002 conversations + usage,
+0003 per-conversation model choice.
 """
 
 from __future__ import annotations
@@ -80,6 +81,9 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str | None] = mapped_column(Text)
+    # The user's current model choice; switching models mid-conversation updates it and the
+    # full history carries over to the new model.
+    model_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

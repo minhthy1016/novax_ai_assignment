@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     history_token_budget: int = Field(default=3000, ge=0, le=100_000)
 
     @property
+    def allow_any_model(self) -> bool:
+        """Outside dev/test, clients may only pick from the catalog's ``selectable`` list."""
+        return self.env in ("dev", "test")
+
+    @property
     def mock_provider_enabled(self) -> bool:
         if self.enable_mock_provider is None:
             return self.env in ("dev", "test")

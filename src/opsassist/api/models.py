@@ -39,6 +39,7 @@ async def list_models(request: Request, _principal: CurrentPrincipal) -> ModelsR
                 id=m.id,
                 kind=m.kind,
                 provider=m.provider,
+                selectable=m.id in catalog.selectable,
                 available=gateway.is_available(m),
                 unavailable_reason=None if status.enabled else status.reason,
                 circuit=str(circuits.get(m.id, "closed")),
@@ -50,6 +51,7 @@ async def list_models(request: Request, _principal: CurrentPrincipal) -> ModelsR
             )
         )
     return ModelsResponse(
+        selectable=catalog.selectable,
         models=models,
         routes=catalog.routes,
         defaults={"chat": catalog.defaults.chat, "embedding": catalog.defaults.embedding},

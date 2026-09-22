@@ -4,6 +4,10 @@
 # Secrets are never written in this file: `api_key_env` names the environment variable
 # that holds the key. A provider whose key is missing is disabled, not an error.
 
+# End-user model picker: exactly these can be chosen (and switched between within a
+# conversation). The chosen model goes first; the others follow as fallbacks.
+selectable = ["nim/gpt-oss-20b", "claude/sonnet-4.5", "ollama/llama3.2-3b"]
+
 [providers.nim]
 kind = "openai_compatible"
 base_url = "https://integrate.api.nvidia.com/v1"
@@ -12,6 +16,13 @@ send_input_type = true      # NIM embedding models require input_type=query|pass
 timeout_s = 60              # per attempt; measured ~59s for a trivial call on the free tier
 max_attempts = 2
 data_egress = true          # requests leave our trust boundary
+
+[providers.anthropic]
+kind = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"   # disabled (shown unavailable) until the key is set
+timeout_s = 60
+max_attempts = 2
+data_egress = true
 
 [providers.ollama]
 kind = "ollama"
@@ -42,6 +53,15 @@ input_usd_per_mtok = 0.05
 output_usd_per_mtok = 0.20
 
 [[models]]
+id = "claude/sonnet-4.5"
+provider = "anthropic"
+provider_model = "claude-sonnet-4-5"
+kind = "chat"
+context_window = 200000
+input_usd_per_mtok = 3.00    # reference list price; verify at anthropic.com/pricing
+output_usd_per_mtok = 15.00
+
+[[models]]
 id = "ollama/llama3.2-3b"
 provider = "ollama"
 provider_model = "llama3.2:3b"
@@ -65,6 +85,13 @@ dimensions = 768
 
 [[models]]
 id = "mock/echo"
+provider = "mock"
+provider_model = "mock-echo"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/echo-alt"      # second healthy mock, for model-switching tests
 provider = "mock"
 provider_model = "mock-echo"
 kind = "chat"
@@ -111,7 +138,7 @@ dimensions = 256
 # retrieval. Embedding failures retry, then fail loudly.
 
 [routes]
-chat-default = ["nim/gpt-oss-20b", "ollama/llama3.2-3b"]
+chat-default = ["nim/gpt-oss-20b", "claude/sonnet-4.5", "ollama/llama3.2-3b"]
 chat-local = ["ollama/llama3.2-3b"]
 chat-mock = ["mock/echo"]
 demo-failover = ["mock/down", "mock/echo"]
@@ -123,3 +150,4 @@ embed-mock = ["mock/embed"]
 [defaults]
 chat = "chat-default"
 embedding = "embed-default"
+

@@ -53,6 +53,12 @@ class EmbeddingRequest(ApiModel):
         return v
 
 
+class ConversationUpdate(ApiModel):
+    """Switch the conversation's model without sending a message."""
+
+    model: str = Field(min_length=1, max_length=100)
+
+
 class DevTokenRequest(ApiModel):
     user_id: str = Field(pattern=r"^U[0-9]{3,}$")
 
@@ -127,6 +133,7 @@ class ModelInfo(BaseModel):
     id: str
     kind: Literal["chat", "embedding"]
     provider: str
+    selectable: bool
     available: bool
     unavailable_reason: str | None
     circuit: str
@@ -138,6 +145,7 @@ class ModelInfo(BaseModel):
 
 
 class ModelsResponse(BaseModel):
+    selectable: list[str]
     models: list[ModelInfo]
     routes: dict[str, list[str]]
     defaults: dict[str, str]
@@ -165,6 +173,7 @@ class ConversationUsage(BaseModel):
 class ConversationResponse(BaseModel):
     id: uuid.UUID
     title: str | None
+    model: str | None
     created_at: datetime
     updated_at: datetime
     messages: list[MessageOut]
@@ -176,6 +185,7 @@ class DevTokenResponse(BaseModel):
     token_type: Literal["bearer"] = "bearer"  # noqa: S105 - OAuth token type, not a secret
     expires_in: int
     user_id: str
+    role: str
 
 
 class ErrorBody(BaseModel):
