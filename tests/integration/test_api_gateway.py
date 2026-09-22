@@ -9,6 +9,11 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+# Since D3 every message is grounded: small talk ("hi") retrieves nothing and abstains
+# without calling a model. Gateway behaviour is therefore exercised with a question the
+# engineering user's knowledge answers, so a model call actually happens.
+Q = "When may we deploy to production?"
+
 
 def parse_sse(text: str) -> list[tuple[str, dict[str, object]]]:
     events = []
@@ -30,7 +35,7 @@ def test_chat_returns_answer_usage_and_persists_conversation(
 ) -> None:
     resp = api.post(
         "/api/chat",
-        json={"message": "What is our deploy window?", "model": "chat-mock"},
+        json={"message": Q, "model": "chat-mock"},
         headers={**u001, "X-Request-ID": "it-chat-00000001"},
     )
     assert resp.status_code == 200, resp.text
@@ -43,7 +48,8 @@ def test_chat_returns_answer_usage_and_persists_conversation(
     conv = api.get(f"/api/conversations/{body['conversation_id']}", headers=u001).json()
     assert [m["role"] for m in conv["messages"]] == ["user", "assistant"]
     assert conv["messages"][1]["content"] == body["content"]
-    assert conv["usage"]["model_calls"] == 1
+    # One query embedding for retrieval + one chat completion, both accounted for.
+    assert (conv["usage"]["chat_calls"], conv["usage"]["embedding_calls"]) == (1, 1)
 
     follow_up = api.post(
         "/api/chat",
@@ -78,7 +84,7 @@ def test_conversation_of_another_user_is_not_found(
 def test_provider_failure_falls_back_and_reports_attempts(
     api: httpx.Client, u001: dict[str, str]
 ) -> None:
-    resp = api.post("/api/chat", json={"message": "hi", "model": "demo-failover"}, headers=u001)
+    resp = api.post("/api/chat", json={"message": Q, "model": "demo-failover"}, headers=u001)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["fallback_used"] is True
@@ -91,7 +97,7 @@ def test_provider_failure_falls_back_and_reports_attempts(
 def test_total_provider_failure_is_a_controlled_503(
     api: httpx.Client, u001: dict[str, str]
 ) -> None:
-    resp = api.post("/api/chat", json={"message": "hi", "model": "mock/down"}, headers=u001)
+    resp = api.post("/api/chat", json={"message": Q, "model": "mock/down"}, headers=u001)
     assert resp.status_code == 503
     err = resp.json()
     # First call exhausts retries; later calls find the breaker open and skip the model.
@@ -119,9 +125,7 @@ def test_validation_errors_do_not_echo_input(api: httpx.Client, u001: dict[str, 
 
 
 def test_stream_event_sequence_and_persistence(api: httpx.Client, u001: dict[str, str]) -> None:
-    resp = api.post(
-        "/api/chat/stream", json={"message": "stream please", "model": "chat-mock"}, headers=u001
-    )
+    resp = api.post("/api/chat/stream", json={"message": Q, "model": "chat-mock"}, headers=u001)
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     events = parse_sse(resp.text)
@@ -136,7 +140,7 @@ def test_stream_event_sequence_and_persistence(api: httpx.Client, u001: dict[str
 
 
 def test_stream_total_failure_emits_error_event(api: httpx.Client, u001: dict[str, str]) -> None:
-    resp = api.post("/api/chat/stream", json={"message": "hi", "model": "mock/down"}, headers=u001)
+    resp = api.post("/api/chat/stream", json={"message": Q, "model": "mock/down"}, headers=u001)
     events = parse_sse(resp.text)
     assert events[-1][0] == "error"
     assert events[-1][1]["partial"] is False

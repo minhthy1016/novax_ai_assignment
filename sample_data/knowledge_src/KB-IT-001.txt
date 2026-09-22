@@ -1,0 +1,9 @@
+# VPN Access Policy
+
+Remote access to internal systems requires a personal OpenVPN profile.
+
+A VPN profile is created by IT Operations only after an authorized approver (a holder of the vpn:approve permission) confirms the request. The requester and the approver must be different people.
+
+Profiles are valid for at most 30 days. Expired profiles are revoked automatically and must be requested again.
+
+Shared or generic VPN profiles are not permitted. Lost devices must be reported to the service desk immediately so the profile can be revoked.

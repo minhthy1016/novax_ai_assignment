@@ -1,0 +1,34 @@
+{"id": "R01", "user": "U001", "query": "When may we deploy to production?", "expected_doc": "KB-ENG-001", "evidence": ["Tuesday or Thursday, 21:00-23:00 MYT"]}
+{"id": "R02", "user": "U001", "query": "What should we watch after a deployment, and for how long?", "expected_doc": "KB-ENG-001", "evidence": ["Monitor error rate, p95 latency and queue depth for 30 minutes"]}
+{"id": "R03", "user": "U001", "query": "When do we roll back a normal production release?", "expected_doc": "KB-ENG-001", "evidence": ["Roll back if error rate exceeds 2% for five consecutive minutes"]}
+{"id": "R04", "user": "U001", "query": "What was the root cause of the payment outage?", "expected_doc": "KB-ENG-002", "evidence": ["A connection-pool limit was not updated after worker scaling"]}
+{"id": "R05", "user": "U001", "query": "What follow-up actions came out of the payment incident?", "expected_doc": "KB-ENG-002", "evidence": ["Add pool saturation alerts", "complete the runbook update by 30 September 2026"]}
+{"id": "R06", "user": "U001", "query": "Summarize the payment incident: impact, cause, fix and actions.", "expected_doc": "KB-ENG-002", "evidence": ["delayed for 18 minutes", "connection-pool limit was not updated", "pool limit was increased", "Add pool saturation alerts"]}
+{"id": "R07", "user": "U003", "query": "How much unused annual leave carries over to next year?", "expected_doc": "KB-HR-001", "evidence": ["carried forward up to five days"]}
+{"id": "R08", "user": "U003", "query": "How early must I ask for a week of leave?", "expected_doc": "KB-HR-001", "evidence": ["at least seven calendar days in advance"]}
+{"id": "R09", "user": "U004", "query": "Who may see salary review planning data?", "expected_doc": "KB-HR-002", "evidence": ["restricted to authorized HR managers"]}
+{"id": "R10", "user": "U005", "query": "How long is a VPN profile valid?", "expected_doc": "KB-IT-001", "evidence": ["valid for at most 30 days"]}
+{"id": "R11", "user": "U005", "query": "Can the same person request and approve VPN access?", "expected_doc": "KB-IT-001", "evidence": ["The requester and the approver must be different people"]}
+{"id": "R12", "user": "U006", "query": "What is the deadline for submitting an expense claim?", "expected_doc": "KB-FIN-001", "evidence": ["within 30 calendar days of the expense date"]}
+{"id": "R13", "user": "U006", "query": "Do I need a receipt for a MYR 30 taxi ride?", "expected_doc": "KB-FIN-001", "evidence": ["Receipts are required for every item above MYR 50"]}
+{"id": "R14", "user": "U001", "query": "What are the service desk opening hours?", "expected_doc": "KB-PUB-001", "evidence": ["Monday to Friday, 08:00-18:00 MYT"]}
+{"id": "R15", "user": "U001", "query": "How fast is a high severity ticket answered?", "expected_doc": "KB-PUB-001", "evidence": ["Response within 1 hour during service desk hours"]}
+{"id": "R16", "user": "U001", "query": "When should I escalate a payment API problem to the database on-call?", "expected_doc": "KB-ENG-003", "evidence": ["If saturation stays above 90% for 10 minutes"]}
+{"id": "R17", "user": "U001", "query": "At what CPU level are search API problems escalated to the database on-call?", "expected_doc": "KB-ENG-003", "evidence": ["If cluster CPU stays above 80% for 15 minutes"]}
+{"id": "R18", "user": "U001", "query": "When do we roll back a payment API deployment during an incident?", "expected_doc": "KB-ENG-003", "evidence": ["checkout error rate exceeds 1% for three consecutive minutes"]}
+{"id": "R19", "user": "U001", "query": "What is the rollback threshold for the search API?", "expected_doc": "KB-ENG-003", "evidence": ["query error rate exceeds 5% for ten consecutive minutes"]}
+{"id": "R20", "user": "U001", "query": "How often is the status page updated during a SEV1?", "expected_doc": "KB-ENG-003", "evidence": ["For SEV1 incidents the status page is updated every 30 minutes"]}
+{"id": "R21", "user": "U001", "query": "How quickly must an incident commander be assigned for a SEV2?", "expected_doc": "KB-ENG-003", "evidence": ["An incident commander must be assigned within 30 minutes"]}
+{"id": "R22", "user": "U001", "query": "When is an incident considered resolved?", "expected_doc": "KB-ENG-003", "evidence": ["metrics have been stable for 30 minutes"]}
+{"id": "R23", "user": "U001", "query": "What should be checked first during triage?", "expected_doc": "KB-ENG-003", "evidence": ["Check recent deployments first"]}
+{"id": "R24", "user": "U001", "query": "Can feature flags be turned off without approval?", "expected_doc": "KB-ENG-003", "evidence": ["Feature flags may be switched off without approval during a SEV1 or SEV2 incident"]}
+{"id": "R25", "user": "U001", "query": "When must the post-incident review take place?", "expected_doc": "KB-ENG-003", "evidence": ["held within five business days for every SEV1 and SEV2 incident"]}
+{"id": "R26", "user": "U001", "query": "What does the incident commander do and not do?", "expected_doc": "KB-ENG-003", "evidence": ["coordinates the response and makes the final call on mitigation", "does not debug"]}
+{"id": "R27", "user": "U001", "query": "How are API servers patched?", "expected_doc": "KB-ENG-004", "evidence": ["API servers are patched one server at a time"]}
+{"id": "R28", "user": "U001", "query": "What batch size is used when patching web servers?", "expected_doc": "KB-ENG-004", "evidence": ["in batches of at most 25% of the fleet"]}
+{"id": "R29", "user": "U001", "query": "How long do worker jobs get to finish before a server is patched?", "expected_doc": "KB-ENG-004", "evidence": ["running jobs are allowed up to 15 minutes to finish"]}
+{"id": "R30", "user": "U001", "query": "When is a server marked offline?", "expected_doc": "KB-ENG-004", "evidence": ["offline after ten consecutive failed checks"]}
+{"id": "R31", "user": "U001", "query": "What happens when memory stays above 90%?", "expected_doc": "KB-ENG-004", "evidence": ["Memory above 90% for 10 minutes triggers a page to the owning team"]}
+{"id": "R32", "user": "U001", "query": "How long are database backups kept?", "expected_doc": "KB-ENG-004", "evidence": ["backups are kept for 35 days"]}
+{"id": "R33", "user": "U001", "query": "When is the monthly restore test done?", "expected_doc": "KB-ENG-004", "evidence": ["first Tuesday of every month"]}
+{"id": "R34", "user": "U001", "query": "What triggers an automatic scale-out?", "expected_doc": "KB-ENG-004", "evidence": ["Sustained CPU above 85% for 20 minutes"]}

@@ -13,7 +13,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=get_settings().database_url.get_secret_value(),
+        url=get_settings().migration_database_url.get_secret_value(),
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
@@ -23,7 +23,9 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass=pool.NullPool)
+    engine = create_engine(
+        get_settings().migration_database_url.get_secret_value(), poolclass=pool.NullPool
+    )
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():

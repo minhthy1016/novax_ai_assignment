@@ -305,3 +305,18 @@ async def test_failing_model_does_not_open_breaker_for_sibling_models() -> None:
         await h.gateway.chat("mock/down", MESSAGES, PARAMS, CTX)
     out = await h.gateway.chat("mock/echo", MESSAGES, PARAMS, CTX)  # same provider, other model
     assert out.model.id == "mock/echo" and out.attempts[0].outcome == "success"
+
+
+async def test_egress_restricted_request_skips_egress_providers() -> None:
+    catalog = make_catalog()
+    catalog.providers["mock"].data_egress = True  # pretend "mock" is a hosted API
+    h = Harness(catalog=catalog)
+    out = await h.gateway.chat("failover", MESSAGES, PARAMS, CTX, allow_egress=False)
+    first = out.attempts[0]
+    assert (first.model_id, first.outcome, first.detail) == (
+        "mock/down",
+        "skipped",
+        "egress_not_permitted",
+    )
+    assert out.model.id == "backup/echo"  # on-box provider served it
+    assert h.mock.calls["mock-down"] == 0  # the egress provider never saw the data

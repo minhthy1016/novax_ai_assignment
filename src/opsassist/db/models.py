@@ -2,19 +2,22 @@
 
 Tables arrive with the features that own them, each in its own migration, so the schema
 history mirrors the build order: 0001 identity + inventory, 0002 conversations + usage,
-0003 per-conversation model choice.
+0003 per-conversation model choice, 0004 knowledge index with row-level security,
+0005 least-privilege runtime role, 0006 parent-child chunk context.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -24,6 +27,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -108,6 +112,8 @@ class Message(Base):
     request_id: Mapped[str | None] = mapped_column(Text)
     prompt_tokens: Mapped[int | None]
     completion_tokens: Mapped[int | None]
+    # Validated citations of an assistant answer (doc key, version, locator, title).
+    citations: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -148,4 +154,87 @@ class LLMUsage(Base):
             name="usage_outcome_enum",
         ),
         Index("ix_llm_usage_user_created", "user_id", "created_at"),
+    )
+
+
+# --------------------------------------------------------------------------- knowledge
+
+INDEX_DIMENSIONS = 768  # the index embedding model's output size (see D-20)
+
+
+class Document(Base):
+    """One row per document *version*. At most one version per doc_key is active
+    (partial unique index); older versions are kept, superseded, for citation history."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    doc_key: Mapped[str] = mapped_column(Text)
+    version: Mapped[int]
+    title: Mapped[str] = mapped_column(Text)
+    department: Mapped[str] = mapped_column(ForeignKey("departments.slug"))
+    classification: Mapped[str] = mapped_column(Text)
+    mime_type: Mapped[str] = mapped_column(Text)
+    source_path: Mapped[str] = mapped_column(Text)
+    content_sha256: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="active")
+    doc_updated_at: Mapped[date] = mapped_column(Date)
+    embedding_model: Mapped[str] = mapped_column(Text)
+    chunker: Mapped[str | None] = mapped_column(Text)  # chunking config the version was built with
+    chunk_count: Mapped[int]
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class _ChunkColumns:
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    doc_key: Mapped[str] = mapped_column(Text)
+    version: Mapped[int]
+    department: Mapped[str] = mapped_column(Text)
+    classification: Mapped[str] = mapped_column(Text)
+    chunk_index: Mapped[int]
+    locator: Mapped[str] = mapped_column(Text)
+    section: Mapped[str | None] = mapped_column(Text)
+    page: Mapped[int | None]
+    content: Mapped[str] = mapped_column(Text)  # the matched (child) text
+    # Parent section handed to the model (parent-child chunking); NULL means use content.
+    context: Mapped[str | None] = mapped_column(Text)
+    headings: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    embed_text: Mapped[str] = mapped_column(Text)
+    token_count: Mapped[int]
+    embedding_model: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(INDEX_DIMENSIONS))
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+
+class Chunk(_ChunkColumns, Base):
+    """Shared index: public and internal chunks only (CHECK constraint)."""
+
+    __tablename__ = "chunks"
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
+
+
+class ConfidentialChunk(_ChunkColumns, Base):
+    """Separate index for confidential documents, which "must not be embedded into a shared
+    index" (KB-HR-002). Own table, own RLS policy, local embeddings only."""
+
+    __tablename__ = "confidential_chunks"
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"))
+
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    source_path: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="queued")
+    attempts: Mapped[int] = mapped_column(default=0)
+    doc_key: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int | None]
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

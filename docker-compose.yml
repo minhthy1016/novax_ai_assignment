@@ -4,9 +4,13 @@
 x-app-env: &app-env
   OPSASSIST_ENV: ${OPSASSIST_ENV:-dev}
   OPSASSIST_LOG_LEVEL: ${OPSASSIST_LOG_LEVEL:-INFO}
-  OPSASSIST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opsassist}:${POSTGRES_PASSWORD:-opsassist}@postgres:5432/${POSTGRES_DB:-opsassist}
+  # Runtime role (least privilege, subject to row-level security) vs schema owner.
+  OPSASSIST_DATABASE_URL: postgresql+psycopg://opsassist_app:${OPSASSIST_APP_DB_PASSWORD:-opsassist_app_dev}@postgres:5432/${POSTGRES_DB:-opsassist}
+  OPSASSIST_MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opsassist}:${POSTGRES_PASSWORD:-opsassist}@postgres:5432/${POSTGRES_DB:-opsassist}
+  OPSASSIST_APP_DB_PASSWORD: ${OPSASSIST_APP_DB_PASSWORD:-opsassist_app_dev}
   OPSASSIST_REDIS_URL: redis://redis:6379/0
   OPSASSIST_JWT_SECRET: ${OPSASSIST_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}
+  OPSASSIST_INDEX_EMBEDDING_MODEL: ${OPSASSIST_INDEX_EMBEDDING_MODEL:-ollama/nomic-embed-text}
   # Provider keys are read from the caller's environment or .env; never written here.
   NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -52,6 +56,23 @@ services:
     environment: *app-env
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
     extra_hosts: ["host.docker.internal:host-gateway"]  # reach Ollama on the host (Linux too)
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  # Background worker: ingestion / re-indexing with retries and a dead-letter queue.
+  worker:
+    build: .
+    environment: *app-env
+    command: ["dramatiq", "opsassist.worker", "--processes", "1", "--threads", "2"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # The image's HTTP health check is for the API; the worker's liveness is its broker link.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, redis; redis.Redis.from_url(os.environ['OPSASSIST_REDIS_URL']).ping()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}

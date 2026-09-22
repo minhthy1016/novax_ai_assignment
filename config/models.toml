@@ -82,6 +82,15 @@ provider = "ollama"
 provider_model = "nomic-embed-text"
 kind = "embedding"
 dimensions = 768
+min_relevance = 0.60     # just below the weakest gold match (0.610); see evaluation/relevance_calibration.py
+
+[[models]]
+id = "mock/embed-768"      # index-compatible deterministic embeddings for CI (no Ollama)
+provider = "mock"
+provider_model = "mock-embed-768"
+kind = "embedding"
+dimensions = 768
+min_relevance = 0.17     # just below the weakest gold match (0.180); relevance_calibration.py --embedder mock
 
 [[models]]
 id = "mock/echo"
@@ -146,6 +155,7 @@ demo-timeout = ["mock/slow", "mock/echo"]
 embed-default = ["ollama/nomic-embed-text"]
 embed-nim = ["nim/nemotron-3-embed-1b"]
 embed-mock = ["mock/embed"]
+embed-index-mock = ["mock/embed-768"]
 
 [defaults]
 chat = "chat-default"

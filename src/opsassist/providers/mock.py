@@ -11,6 +11,7 @@ model name so the same API call can exercise every failure path without code cha
 ``mock-ratelimit``  Always fails with 429 and a ``Retry-After`` hint.
 ``mock-embed``      Feature-hashed bag-of-words embeddings: deterministic, and texts that
                     share words are close, so retrieval tests behave sensibly.
+``mock-embed-N``    Same, with N dimensions (``mock-embed-768`` matches the index).
 ==================  =====================================================================
 """
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import math
 import re
 from collections import Counter
@@ -43,8 +45,16 @@ Responder = Callable[[list[ChatMessage]], str]
 _WORD = re.compile(r"[a-z0-9]+")
 
 
+_SOURCE_1 = re.compile(r'<source id="1"[^>]*>\n(.*?)\n</source>', re.DOTALL)
+
+
 def default_responder(messages: list[ChatMessage]) -> str:
+    """Echo for plain chat; for grounded prompts, answer with the first sentence of
+    source 1 and cite it - deterministic, so the citation pipeline is testable offline."""
     last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
+    if m := _SOURCE_1.search(last_user):
+        first_sentence = re.split(r"(?<=[.!?])\s", m.group(1).strip(), maxsplit=1)[0]
+        return f"{html.unescape(first_sentence)} [1]"
     digest = hashlib.sha256(last_user.encode()).hexdigest()[:8]
     return f"[mock:{digest}] Received: {last_user[:200]}"
 
@@ -102,9 +112,12 @@ class MockProvider:
         yield StreamEnd(usage=self._usage(messages, text), finish_reason="stop")
 
     async def embed(self, model: str, inputs: list[str], input_type: InputType) -> EmbeddingResult:
-        if model != "mock-embed":
+        dim = self._embedding_dim
+        if model.startswith("mock-embed-") and model.rsplit("-", 1)[1].isdigit():
+            dim = int(model.rsplit("-", 1)[1])
+        elif model != "mock-embed":
             await self._behave(model)
-        vectors = [hashed_embedding(t, self._embedding_dim) for t in inputs]
+        vectors = [hashed_embedding(t, dim) for t in inputs]
         tokens = sum(estimate_tokens(t) for t in inputs)
         return EmbeddingResult(vectors=vectors, usage=Usage(prompt_tokens=tokens))
 
@@ -114,10 +127,27 @@ class MockProvider:
         return Usage(prompt_tokens=prompt, completion_tokens=estimate_tokens(completion))
 
 
+# Function words carry no topic signal; without this, every text "matches" every other.
+_STOPWORDS = frozenset(
+    (  # noqa: SIM905 - a word list reads better as one string
+        "a an the and or but if of to in on at by for with from as is are was "
+        "were be been being it its this that these those we you they he she i me "
+        "my our your their what when where which who whom how why do does did "
+        "done can could may might must shall should will would not no yes all any "
+        "each some so than then there here about into over after before up down "
+        "out also only just more most "
+    ).split()
+)
+
+
 def hashed_embedding(text: str, dim: int) -> list[float]:
-    """Signed feature hashing of lowercase word tokens, L2-normalised."""
+    """Signed feature hashing of lowercase content words (stopwords dropped, crude plural
+    stripping), L2-normalised. Deterministic stand-in for a real embedding model."""
     vec = [0.0] * dim
-    for word in _WORD.findall(text.lower()):
+    for raw in _WORD.findall(text.lower()):
+        if raw in _STOPWORDS:
+            continue
+        word = raw[:-1] if len(raw) > 4 and raw.endswith("s") else raw
         h = int.from_bytes(hashlib.blake2b(word.encode(), digest_size=8).digest(), "big")
         vec[h % dim] += 1.0 if (h >> 63) & 1 else -1.0
     norm = math.sqrt(sum(v * v for v in vec))

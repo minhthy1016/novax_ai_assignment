@@ -22,14 +22,23 @@ migrate: ## Apply migrations from the host
 seed: ## Load fixtures from the host
 	uv run python -m opsassist.seed
 
+ingest: ## Queue all sample knowledge for the worker to (re)index
+	$(COMPOSE) exec api python -m opsassist.knowledge.ingest
+
+ingest-inline: ## Index sample knowledge in-process (no worker)
+	$(COMPOSE) exec api python -m opsassist.knowledge.ingest --inline
+
+jobs: ## Show recent ingestion jobs
+	$(COMPOSE) exec postgres psql -U opsassist -c "SELECT source_path, status, attempts, doc_key, version, detail, updated_at FROM ingestion_jobs ORDER BY updated_at DESC LIMIT 20"
+
 lint: ## Ruff + mypy
-	uv run ruff check src tests migrations
-	uv run ruff format --check src tests migrations
+	uv run ruff check src tests migrations evaluation scripts
+	uv run ruff format --check src tests migrations evaluation scripts
 	uv run mypy src
 
 fmt: ## Auto-format
-	uv run ruff check --fix src tests migrations
-	uv run ruff format src tests migrations
+	uv run ruff check --fix src tests migrations evaluation scripts
+	uv run ruff format src tests migrations evaluation scripts
 
 test: ## Unit tests (no services needed)
 	uv run pytest -m "not integration"
@@ -40,4 +49,4 @@ test-integration: ## Integration tests (needs `make up`)
 logs: ## Tail API logs
 	$(COMPOSE) logs -f api
 
-.PHONY: help install up down reset migrate seed lint fmt test test-integration logs
+.PHONY: help install up down reset migrate seed ingest ingest-inline jobs lint fmt test test-integration logs

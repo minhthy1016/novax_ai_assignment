@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import anyio
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, select
 
 from opsassist.api.common import (
@@ -25,19 +27,20 @@ from opsassist.api.schemas import (
     AttemptOut,
     ChatRequest,
     ChatResponse,
+    CitationOut,
     ConversationResponse,
     ConversationUpdate,
     ConversationUsage,
     ErrorResponse,
     MessageOut,
     ModelRef,
+    RetrievalOut,
 )
-from opsassist.auth import CurrentPrincipal
+from opsassist.auth import CurrentPrincipal, Principal
 from opsassist.config import Settings
 from opsassist.conversations import (
     ConversationNotFound,
     add_message,
-    build_prompt,
     get_or_create,
     get_owned,
     history_window,
@@ -53,8 +56,11 @@ from opsassist.gateway.gateway import (
     StreamFailed,
     StreamStarted,
 )
+from opsassist.knowledge.retrieval import RetrievalResult, retrieve
 from opsassist.logging_setup import get_logger
+from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, StreamDelta, Usage
+from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
 
 router = APIRouter(prefix="/api", tags=["chat"])
 log = get_logger("opsassist.chat")
@@ -64,7 +70,8 @@ log = get_logger("opsassist.chat")
 class Prepared:
     conversation_id: uuid.UUID
     user_message_id: uuid.UUID
-    prompt: list[ChatMessage]
+    question: str
+    history: list[ChatMessage]
     model_choice: str | None  # None -> catalog default route
 
 
@@ -81,11 +88,11 @@ def _stored_choice(gateway: LLMGateway, settings: Settings, stored: str | None) 
 
 
 async def _prepare(request: Request, principal_id: str, body: ChatRequest) -> Prepared:
-    """Resolve the conversation and model choice, build the prompt, persist the user turn.
+    """Resolve the conversation and model choice, load history, persist the user turn.
 
     Choosing a model (``body.model``) switches the conversation to it; omitting it keeps the
     conversation's current model. History is model-independent, so a switched-to model
-    sees the whole conversation. The user message is committed before the model is called,
+    sees the whole conversation. The user message is committed before anything else runs,
     so it survives a provider failure.
     """
     settings: Settings = request.app.state.settings
@@ -102,7 +109,51 @@ async def _prepare(request: Request, principal_id: str, body: ChatRequest) -> Pr
         user_msg = await add_message(
             session, conv.id, "user", body.message, request_id=request_id_of(request)
         )
-    return Prepared(conv.id, user_msg.id, build_prompt(history, body.message), choice)
+    return Prepared(conv.id, user_msg.id, body.message, history, choice)
+
+
+async def _retrieve(
+    request: Request, principal: Principal, question: str, ctx: CallContext
+) -> RetrievalResult:
+    """Retrieval for the caller's access scope. Scope comes from database permissions only."""
+    return await retrieve(
+        question,
+        scope_for(principal),
+        factory=request.app.state.session_factory,
+        gateway=request.app.state.gateway,
+        settings=request.app.state.settings,
+        ctx=ctx,
+    )
+
+
+def _retrieval_out(r: RetrievalResult) -> RetrievalOut:
+    return RetrievalOut(
+        candidates=r.candidates,
+        used=len(r.chunks),
+        below_threshold=r.below_threshold,
+        latency_ms=r.latency_ms,
+        embedding_model=r.embedding_model,
+    )
+
+
+def _citations_out(answer: GroundedAnswer) -> list[CitationOut]:
+    return [
+        CitationOut(
+            number=c.number,
+            doc_key=c.doc_key,
+            version=c.version,
+            title=c.title,
+            locator=c.locator,
+            ref=c.ref,
+            label=c.label(),
+            snippet=c.snippet,
+        )
+        for c in answer.citations
+    ]
+
+
+def _citations_json(answer: GroundedAnswer) -> list[dict[str, object]]:
+    return [c.model_dump() for c in _citations_out(answer)]
 
 
 async def _save_assistant(
@@ -113,6 +164,7 @@ async def _save_assistant(
     status: str,
     model_id: str | None,
     usage: Usage | None,
+    citations: list[dict[str, object]] | None = None,
 ) -> uuid.UUID:
     with anyio.CancelScope(shield=True):  # must persist even when the client disconnected
         async with request.app.state.session_factory() as session, session.begin():
@@ -126,8 +178,26 @@ async def _save_assistant(
                 model_id=model_id,
                 prompt_tokens=usage.prompt_tokens if usage else None,
                 completion_tokens=usage.completion_tokens if usage else None,
+                citations=citations,
             )
     return msg.id
+
+
+async def _start(
+    request: Request, body: ChatRequest, principal: Principal
+) -> tuple[Prepared, CallContext] | JSONResponse:
+    gateway: LLMGateway = request.app.state.gateway
+    settings: Settings = request.app.state.settings
+    request_id = request_id_of(request)
+    try:
+        # Validate the choice before persisting anything.
+        gateway.catalog.check_choice(body.model, allow_any=settings.allow_any_model)
+        prep = await _prepare(request, principal.user_id, body)
+    except UnknownModelError as exc:
+        return error_response(400, "unknown_model", str(exc), request_id)
+    except ConversationNotFound:
+        return error_response(404, "not_found", NOT_FOUND, request_id)
+    return prep, CallContext(request_id, principal.user_id, str(prep.conversation_id))
 
 
 @router.post(
@@ -142,50 +212,102 @@ async def _save_assistant(
     },
 )
 async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal) -> Any:
-    gateway: LLMGateway = request.app.state.gateway
-    request_id = request_id_of(request)
-    settings: Settings = request.app.state.settings
-    try:
-        # Validate the choice before persisting anything.
-        gateway.catalog.check_choice(body.model, allow_any=settings.allow_any_model)
-        prep = await _prepare(request, principal.user_id, body)
-    except UnknownModelError as exc:
-        return error_response(400, "unknown_model", str(exc), request_id)
-    except ConversationNotFound:
-        return error_response(404, "not_found", NOT_FOUND, request_id)
-    conv_id = prep.conversation_id
+    """Answer from approved knowledge the caller may read, with validated citations.
 
-    ctx = CallContext(request_id, principal.user_id, str(conv_id))
-    params = ChatParams(temperature=body.temperature, max_tokens=body.max_tokens)
+    Nothing relevant retrieved -> a fixed abstention, and no model is called.
+    Confidential material in the context -> only providers that keep data on-box (D-15).
+    """
+    started = time.perf_counter()
+    gateway: LLMGateway = request.app.state.gateway
+    begun = await _start(request, body, principal)
+    if isinstance(begun, JSONResponse):
+        return begun
+    prep, ctx = begun
+    conv_id = prep.conversation_id
     try:
-        outcome = await gateway.chat(prep.model_choice, prep.prompt, params, ctx)
+        retrieval = await _retrieve(request, principal, prep.question, ctx)
     except GatewayError as err:
         await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
         return error_response(
-            GATEWAY_STATUS[err.code], err.code, str(err), request_id, err.attempts
+            503,
+            "retrieval_unavailable",
+            "knowledge search is unavailable",
+            ctx.request_id,
+            err.attempts,
         )
 
+    if not retrieval.chunks:
+        answer = abstention()
+        message_id = await _save_assistant(
+            request,
+            conv_id,
+            answer.text,
+            status="complete",
+            model_id=None,
+            usage=None,
+            citations=[],
+        )
+        return ChatResponse(
+            conversation_id=conv_id,
+            message_id=message_id,
+            content=answer.text,
+            citations=[],
+            grounded=True,
+            abstained=True,
+            model=None,
+            route=None,
+            fallback_used=False,
+            finish_reason=None,
+            usage=usage_out(Usage(), Decimal(0)),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            retrieval=_retrieval_out(retrieval),
+            attempts=[],
+            request_id=ctx.request_id,
+        )
+
+    messages = build_messages(prep.question, retrieval.chunks, prep.history)
+    params = ChatParams(temperature=body.temperature, max_tokens=body.max_tokens)
+    try:
+        outcome = await gateway.chat(
+            prep.model_choice,
+            messages,
+            params,
+            ctx,
+            allow_egress=not retrieval.has_confidential,
+        )
+    except GatewayError as err:
+        await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
+        return error_response(
+            GATEWAY_STATUS[err.code], err.code, str(err), ctx.request_id, err.attempts
+        )
+
+    answer = finalize(outcome.result.content, retrieval.chunks)
     usage = outcome.result.usage
     message_id = await _save_assistant(
         request,
         conv_id,
-        outcome.result.content,
+        answer.text,
         status="complete",
         model_id=outcome.model.id,
         usage=usage,
+        citations=_citations_json(answer),
     )
     return ChatResponse(
         conversation_id=conv_id,
         message_id=message_id,
-        content=outcome.result.content,
+        content=answer.text,
+        citations=_citations_out(answer),
+        grounded=answer.grounded,
+        abstained=answer.abstained,
         model=ModelRef(id=outcome.model.id, provider=outcome.model.provider),
         route=outcome.route,
         fallback_used=outcome.fallback_used,
         finish_reason=outcome.result.finish_reason,
         usage=usage_out(usage, outcome.cost_usd),
-        latency_ms=outcome.latency_ms,
+        latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        retrieval=_retrieval_out(retrieval),
         attempts=[AttemptOut.of(a) for a in outcome.attempts],
-        request_id=request_id,
+        request_id=ctx.request_id,
     )
 
 
@@ -197,22 +319,16 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPrincipal) -> Any:
     """Server-sent events: ``meta`` -> ``model`` -> ``delta``* -> ``done`` | ``error``.
 
-    Closing the connection cancels the upstream provider request; whatever was generated
-    so far is stored with status ``partial`` and its usage is recorded as ``cancelled``.
+    Same grounding as ``/api/chat``. Deltas are the raw model text; the ``done`` event
+    carries the validated citations and the stored (cleaned) answer. Closing the connection
+    cancels the upstream provider request; the partial answer is stored as ``partial``.
     """
     gateway: LLMGateway = request.app.state.gateway
-    settings: Settings = request.app.state.settings
-    request_id = request_id_of(request)
-    try:
-        gateway.catalog.check_choice(body.model, allow_any=settings.allow_any_model)
-        prep = await _prepare(request, principal.user_id, body)
-    except UnknownModelError as exc:
-        return error_response(400, "unknown_model", str(exc), request_id)
-    except ConversationNotFound:
-        return error_response(404, "not_found", NOT_FOUND, request_id)
-    conv_id, user_msg_id, prompt = prep.conversation_id, prep.user_message_id, prep.prompt
-
-    ctx = CallContext(request_id, principal.user_id, str(conv_id))
+    begun = await _start(request, body, principal)
+    if isinstance(begun, JSONResponse):
+        return begun
+    prep, ctx = begun
+    conv_id = prep.conversation_id
     params = ChatParams(temperature=body.temperature, max_tokens=body.max_tokens)
 
     async def events() -> AsyncIterator[str]:
@@ -223,14 +339,62 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
             "meta",
             {
                 "conversation_id": str(conv_id),
-                "user_message_id": str(user_msg_id),
-                "request_id": request_id,
+                "user_message_id": str(prep.user_message_id),
+                "request_id": ctx.request_id,
             },
         )
         try:
-            async with aclosing(
-                gateway.stream_chat(prep.model_choice, prompt, params, ctx)
-            ) as stream:
+            try:
+                retrieval = await _retrieve(request, principal, prep.question, ctx)
+            except GatewayError:
+                finished = True
+                await _save_assistant(
+                    request, conv_id, "", status="error", model_id=None, usage=None
+                )
+                yield _sse(
+                    "error",
+                    {
+                        "code": "retrieval_unavailable",
+                        "message": "knowledge search is unavailable",
+                        "partial": False,
+                        "request_id": ctx.request_id,
+                    },
+                )
+                return
+            if not retrieval.chunks:
+                finished = True
+                answer = abstention()
+                msg_id = await _save_assistant(
+                    request,
+                    conv_id,
+                    answer.text,
+                    status="complete",
+                    model_id=None,
+                    usage=None,
+                    citations=[],
+                )
+                yield _sse("delta", {"text": answer.text})
+                yield _sse(
+                    "done",
+                    {
+                        "message_id": str(msg_id),
+                        "content": answer.text,
+                        "citations": [],
+                        "grounded": True,
+                        "abstained": True,
+                        "retrieval": _retrieval_out(retrieval).model_dump(),
+                    },
+                )
+                return
+            messages = build_messages(prep.question, retrieval.chunks, prep.history)
+            stream_events = gateway.stream_chat(
+                prep.model_choice,
+                messages,
+                params,
+                ctx,
+                allow_egress=not retrieval.has_confidential,
+            )
+            async with aclosing(stream_events) as stream:
                 async for event in stream:
                     match event:
                         case StreamStarted():
@@ -249,22 +413,30 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                             yield _sse("delta", {"text": event.text})
                         case StreamCompleted():
                             finished = True
+                            answer = finalize("".join(produced), retrieval.chunks)
                             msg_id = await _save_assistant(
                                 request,
                                 conv_id,
-                                "".join(produced),
+                                answer.text,
                                 status="complete",
                                 model_id=event.model.id,
                                 usage=event.usage,
+                                citations=_citations_json(answer),
                             )
                             yield _sse(
                                 "done",
                                 {
                                     "message_id": str(msg_id),
+                                    "content": answer.text,
+                                    "citations": _citations_json(answer),
+                                    "grounded": answer.grounded,
+                                    "abstained": answer.abstained,
+                                    "invalid_citations": answer.invalid_citations,
                                     "finish_reason": event.finish_reason,
                                     "usage": usage_out(event.usage, event.cost_usd).model_dump(
                                         mode="json"
                                     ),
+                                    "retrieval": _retrieval_out(retrieval).model_dump(),
                                     "latency_ms": event.latency_ms,
                                     "ttft_ms": event.ttft_ms,
                                     "attempts": [
@@ -288,7 +460,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                                     "code": event.code,
                                     "message": event.message,
                                     "partial": event.started,
-                                    "request_id": request_id,
+                                    "request_id": ctx.request_id,
                                     "attempts": [
                                         AttemptOut.of(a).model_dump() for a in event.attempts
                                     ],
@@ -306,7 +478,9 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                     usage=None,
                 )
                 log.info(
-                    "stream_cancelled", conversation_id=str(conv_id), chars=len("".join(produced))
+                    "stream_cancelled",
+                    conversation_id=str(conv_id),
+                    chars=len("".join(produced)),
                 )
 
     return StreamingResponse(
@@ -342,6 +516,7 @@ async def _conversation_view(
                 model=m.model_id,
                 prompt_tokens=m.prompt_tokens,
                 completion_tokens=m.completion_tokens,
+                citations=m.citations,
                 request_id=m.request_id,
                 created_at=m.created_at,
             )
@@ -349,6 +524,8 @@ async def _conversation_view(
         ],
         usage=ConversationUsage(
             model_calls=totals.model_calls,
+            chat_calls=totals.chat_calls,
+            embedding_calls=totals.embedding_calls,
             prompt_tokens=totals.prompt_tokens,
             completion_tokens=totals.completion_tokens,
             cost_usd=totals.cost_usd,

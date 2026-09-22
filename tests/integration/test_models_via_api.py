@@ -39,11 +39,16 @@ def assert_controlled_or_ok(resp: httpx.Response, model_id: str) -> None:
     assert body["attempts"] and body["attempts"][0]["model"] == model_id
 
 
+# A question the engineering user's knowledge answers, so retrieval admits sources and the
+# chosen model is actually called (small talk would abstain without any model call).
+QUESTION = "When may we deploy to production?"
+
+
 @pytest.mark.parametrize("model_id", CHAT)
 def test_chat_model_via_api(api: httpx.Client, u001: dict[str, str], model_id: str) -> None:
     resp = api.post(
         "/api/chat",
-        json={"message": "Reply with one word: ok", "model": model_id, "max_tokens": 64},
+        json={"message": QUESTION, "model": model_id, "max_tokens": 200},
         headers=u001,
         timeout=180,
     )

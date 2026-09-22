@@ -94,7 +94,10 @@ async def _upsert(session: AsyncSession, model: type[Base], rows: list[dict[str,
 async def seed(data_dir: Path) -> Fixtures:
     fixtures = load_fixtures(data_dir)
     settings = get_settings()
-    engine = create_engine(settings)
+    # Seeding is an owner operation, like migrations.
+    engine = create_engine(
+        settings.model_copy(update={"database_url": settings.migration_database_url})
+    )
     try:
         async with create_session_factory(engine)() as session, session.begin():
             await _upsert(session, Department, [d.model_dump() for d in fixtures.departments])

@@ -1,0 +1,7 @@
+Expense claims must be submitted within 30 calendar days of the expense date.
+
+Receipts are required for every item above MYR 50. Claims without the required receipts are returned to the employee.
+
+Travel claims need prior approval from the employee's manager. Claims above MYR 5,000 also need approval from the Finance Manager.
+
+Approved claims are reimbursed in the next monthly payroll run.
