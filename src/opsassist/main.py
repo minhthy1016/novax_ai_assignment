@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from opsassist import __version__
 from opsassist.api import auth as auth_api
-from opsassist.api import chat, health, models
+from opsassist.api import chat, health, knowledge, models
 from opsassist.api.common import request_id_of
 from opsassist.config import Settings, get_settings
 from opsassist.db.session import create_engine, create_session_factory
@@ -64,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(models.router)
+    app.include_router(knowledge.router)
     if settings.env in ("dev", "test"):
         app.include_router(auth_api.router)
 

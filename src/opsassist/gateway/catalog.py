@@ -52,6 +52,9 @@ class ModelSpec(BaseModel):
     output_usd_per_mtok: Decimal = Decimal(0)
     # Newer Claude models (Opus 4.7+, Sonnet 5) reject sampling parameters outright.
     supports_temperature: bool = True
+    # Embedding models: cosine similarity below which a vector-only hit is not relevant.
+    # Model-specific, because similarity distributions differ between models.
+    min_relevance: float | None = None
 
     def estimate_cost_usd(self, prompt_tokens: int, completion_tokens: int) -> Decimal:
         million = Decimal(1_000_000)

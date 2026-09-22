@@ -12,8 +12,10 @@ from tests.integration.conftest import token_for
 
 pytestmark = pytest.mark.integration
 
+# Editing users is an administrative (owner) operation; the runtime role cannot do it.
 DB = os.environ.get(
-    "OPSASSIST_DATABASE_URL", "postgresql+psycopg://opsassist:opsassist@localhost:5432/opsassist"
+    "OPSASSIST_MIGRATION_DATABASE_URL",
+    "postgresql+psycopg://opsassist:opsassist@localhost:5432/opsassist",
 ).replace("postgresql+psycopg://", "postgresql://")
 
 
@@ -24,20 +26,27 @@ def chat(api: httpx.Client, auth: dict[str, str], message: str, **extra: object)
 
 
 def test_switching_models_keeps_the_conversation(api: httpx.Client, u001: dict[str, str]) -> None:
-    first = chat(api, u001, "first question", model="mock/echo")
+    first = chat(api, u001, "When may we deploy to production?", model="mock/echo")
     conv = first["conversation_id"]
 
-    second = chat(api, u001, "second question", model="mock/echo-alt", conversation_id=conv)
+    second = chat(
+        api,
+        u001,
+        "When should we roll back a deployment?",
+        model="mock/echo-alt",
+        conversation_id=conv,
+    )
     assert second["model"]["id"] == "mock/echo-alt"
     # The switched-to model received the earlier turns as history.
     assert second["usage"]["prompt_tokens"] > first["usage"]["prompt_tokens"]
 
-    third = chat(api, u001, "third question", conversation_id=conv)  # no model: keep current
+    # No model given: the conversation keeps its current one.
+    third = chat(api, u001, "What is the production deployment procedure?", conversation_id=conv)
     assert third["model"]["id"] == "mock/echo-alt"
 
     patched = api.patch(f"/api/conversations/{conv}", json={"model": "mock/echo"}, headers=u001)
     assert patched.status_code == 200 and patched.json()["model"] == "mock/echo"
-    fourth = chat(api, u001, "fourth question", conversation_id=conv)
+    fourth = chat(api, u001, "What caused the payment incident?", conversation_id=conv)
     assert fourth["model"]["id"] == "mock/echo"
 
     history = api.get(f"/api/conversations/{conv}", headers=u001).json()

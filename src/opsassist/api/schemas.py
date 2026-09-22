@@ -102,17 +102,65 @@ class ModelRef(BaseModel):
     provider: str
 
 
+class CitationOut(BaseModel):
+    number: int
+    doc_key: str
+    version: int
+    title: str
+    locator: str
+    ref: str
+    label: str
+    snippet: str
+
+
+class RetrievalOut(BaseModel):
+    candidates: int
+    used: int
+    below_threshold: int
+    latency_ms: float
+    embedding_model: str
+
+
 class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID
     content: str
-    model: ModelRef
-    route: str
+    citations: list[CitationOut]
+    grounded: bool
+    abstained: bool
+    # None when no model was called (nothing relevant was retrieved -> abstention).
+    model: ModelRef | None
+    route: str | None
     fallback_used: bool
     finish_reason: str | None
     usage: UsageOut
     latency_ms: float
+    retrieval: RetrievalOut
     attempts: list[AttemptOut]
+    request_id: str
+
+
+class SearchRequest(ApiModel):
+    query: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    top_k: int = Field(default=4, ge=1, le=20)
+
+
+class SearchHit(BaseModel):
+    rank: int
+    doc_key: str
+    version: int
+    title: str
+    locator: str
+    ref: str
+    content: str
+    similarity: float | None
+    fts_rank: float | None
+    score: float
+
+
+class SearchResponse(BaseModel):
+    hits: list[SearchHit]
+    retrieval: RetrievalOut
     request_id: str
 
 
@@ -159,12 +207,15 @@ class MessageOut(BaseModel):
     model: str | None
     prompt_tokens: int | None
     completion_tokens: int | None
+    citations: list[dict[str, object]] | None
     request_id: str | None
     created_at: datetime
 
 
 class ConversationUsage(BaseModel):
     model_calls: int
+    chat_calls: int
+    embedding_calls: int  # query embeddings for retrieval
     prompt_tokens: int
     completion_tokens: int
     cost_usd: Decimal

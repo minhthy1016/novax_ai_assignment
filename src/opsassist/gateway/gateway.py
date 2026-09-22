@@ -216,8 +216,11 @@ class LLMGateway:
         messages: list[ChatMessage],
         params: ChatParams,
         ctx: CallContext,
+        *,
+        allow_egress: bool = True,
     ) -> ChatOutcome:
         route_name, targets = self.catalog.resolve(route, "chat")
+        blocked = self._egress_blocked(targets, allow_egress)
         started = time.perf_counter()
 
         async def invoke(spec: ModelSpec) -> ChatResult:
@@ -226,7 +229,13 @@ class LLMGateway:
             return await provider.chat(spec.provider_model, messages, _params_for(spec, params))
 
         result, spec, attempts = await self._run(
-            "chat", targets, ctx, invoke, lambda r: r.usage, self._config.request_deadline_s
+            "chat",
+            targets,
+            ctx,
+            invoke,
+            lambda r: r.usage,
+            self._config.request_deadline_s,
+            blocked,
         )
         return ChatOutcome(
             result=result,
@@ -265,8 +274,11 @@ class LLMGateway:
         messages: list[ChatMessage],
         params: ChatParams,
         ctx: CallContext,
+        *,
+        allow_egress: bool = True,
     ) -> AsyncGenerator[GatewayStreamEvent, None]:
         route_name, targets = self.catalog.resolve(route, "chat")
+        blocked = self._egress_blocked(targets, allow_egress)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._config.stream_deadline_s
         request_started = time.perf_counter()
@@ -274,7 +286,7 @@ class LLMGateway:
 
         for spec in targets:
             provider = self.chat_provider(spec)
-            if not await self._admit(spec, provider, ctx, attempts):
+            if not await self._admit(spec, provider, ctx, attempts, "chat", blocked):
                 continue
             assert provider is not None
             cfg = self.catalog.providers[spec.provider]
@@ -394,6 +406,7 @@ class LLMGateway:
         invoke: Callable[[ModelSpec], Awaitable[T]],
         usage_of: Callable[[T], Usage],
         deadline_s: float,
+        blocked: frozenset[str] = frozenset(),
     ) -> tuple[T, ModelSpec, list[AttemptRecord]]:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + deadline_s
@@ -401,7 +414,7 @@ class LLMGateway:
 
         for spec in targets:
             provider = self.providers.get(spec.provider)
-            if not await self._admit(spec, provider, ctx, attempts, kind):
+            if not await self._admit(spec, provider, ctx, attempts, kind, blocked):
                 continue
             cfg = self.catalog.providers[spec.provider]
             breaker = self.breakers.get(spec.id)
@@ -462,6 +475,14 @@ class LLMGateway:
 
     # ------------------------------------------------------------ helpers
 
+    def _egress_blocked(self, targets: list[ModelSpec], allow_egress: bool) -> frozenset[str]:
+        """Targets that may not receive this request's data (D-15): when the context holds
+        confidential material, only providers with ``data_egress = false`` are eligible.
+        Blocked targets are reported as skipped, so the restriction is visible."""
+        if allow_egress:
+            return frozenset()
+        return frozenset(t.id for t in targets if self.catalog.providers[t.provider].data_egress)
+
     async def _admit(
         self,
         spec: ModelSpec,
@@ -469,8 +490,11 @@ class LLMGateway:
         ctx: CallContext,
         attempts: list[AttemptRecord],
         kind: ModelKind = "chat",
+        blocked: frozenset[str] = frozenset(),
     ) -> bool:
-        if provider is None:
+        if spec.id in blocked:
+            reason = "egress_not_permitted"
+        elif provider is None:
             reason = "provider_disabled"
         elif not self.breakers.get(spec.id).allow():
             reason = "circuit_open"
