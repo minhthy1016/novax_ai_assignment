@@ -22,7 +22,8 @@ async def dev_token(request: Request, body: DevTokenRequest) -> DevTokenResponse
     if principal is None:
         raise HTTPException(status_code=404, detail="unknown or inactive user")
     return DevTokenResponse(
-        access_token=issue_token(settings, principal.user_id),
+        access_token=issue_token(settings, principal.user_id, principal.role),
         expires_in=settings.jwt_ttl_seconds,
         user_id=principal.user_id,
+        role=principal.role,
     )

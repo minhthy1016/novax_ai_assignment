@@ -1,8 +1,10 @@
 """Authentication: bearer JWT -> Principal.
 
-The token carries identity only (``sub``). Department and permissions are loaded from the
-database on every request, so revoking a permission or deactivating a user takes effect
-immediately instead of when the token expires.
+The token binds identity and role: ``sub`` (user ID) and ``role`` (the role assigned when
+the token was issued). Every request re-checks both against the database: an unknown or
+deactivated user, or a role that no longer matches, is rejected with 401 and must sign in
+again. Permissions are never taken from the token - they are loaded from the database on
+every request, so revoking one takes effect immediately.
 
 Token issuance here is a local stand-in for an identity provider (see architecture.md
 D-08). In production the API would validate tokens from the company IdP (OIDC) and this
@@ -42,10 +44,16 @@ class Principal(BaseModel):
         return permission in self.permissions
 
 
-def issue_token(settings: Settings, user_id: str, now: float | None = None) -> str:
+class TokenClaims(BaseModel):
+    user_id: str
+    role: str
+
+
+def issue_token(settings: Settings, user_id: str, role: str, now: float | None = None) -> str:
     issued = int(now if now is not None else time.time())
     claims = {
         "sub": user_id,
+        "role": role,
         "iss": ISSUER,
         "aud": AUDIENCE,
         "iat": issued,
@@ -54,17 +62,17 @@ def issue_token(settings: Settings, user_id: str, now: float | None = None) -> s
     return jwt.encode(claims, settings.jwt_secret.get_secret_value(), algorithm=ALGORITHM)
 
 
-def decode_token(settings: Settings, token: str) -> str:
-    """Return the subject, or raise ``jwt.InvalidTokenError``."""
+def decode_token(settings: Settings, token: str) -> TokenClaims:
+    """Return the verified claims, or raise ``jwt.InvalidTokenError``."""
     claims = jwt.decode(
         token,
         settings.jwt_secret.get_secret_value(),
         algorithms=[ALGORITHM],  # pinned: never accept 'none' or a caller-chosen algorithm
         audience=AUDIENCE,
         issuer=ISSUER,
-        options={"require": ["sub", "exp", "iat", "iss", "aud"]},
+        options={"require": ["sub", "role", "exp", "iat", "iss", "aud"]},
     )
-    return str(claims["sub"])
+    return TokenClaims(user_id=str(claims["sub"]), role=str(claims["role"]))
 
 
 def _unauthorized(detail: str = "invalid or missing credentials") -> HTTPException:
@@ -99,12 +107,15 @@ async def get_principal(
         raise _unauthorized()
     settings: Settings = request.app.state.settings
     try:
-        user_id = decode_token(settings, credentials.credentials)
+        claims = decode_token(settings, credentials.credentials)
     except jwt.InvalidTokenError:
         raise _unauthorized() from None
-    principal = await load_principal(request.app.state.session_factory, user_id)
+    principal = await load_principal(request.app.state.session_factory, claims.user_id)
     if principal is None:
         raise _unauthorized()
+    if principal.role != claims.role:
+        # Role changed since the token was issued: the caller must re-authenticate.
+        raise _unauthorized("role changed since sign-in; request a new token")
     structlog.contextvars.bind_contextvars(user_id=principal.user_id)
     return principal
 
