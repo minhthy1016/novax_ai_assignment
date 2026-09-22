@@ -37,7 +37,14 @@ class Block:
     text: str
     kind: BlockKind
     page: int | None = None
-    section: str | None = None
+    # Full heading path at this point in the document, outermost first, e.g.
+    # ("Service playbooks", "Payment API", "Rollback"). Carried across pages.
+    headings: tuple[str, ...] = ()
+    level: int = 0  # heading level for kind == "heading"
+
+    @property
+    def section(self) -> str | None:
+        return self.headings[-1] if self.headings else None
 
 
 @dataclass
@@ -67,40 +74,86 @@ def normalize(text: str) -> str:
     return "\n".join(_SPACES.sub(" ", line).strip() for line in text.split("\n"))
 
 
-def _blocks_from_lines(lines: list[str], page: int | None = None) -> list[Block]:
-    """Headings, list items and blank-line separated paragraphs. Continuation lines are
-    joined to the block they belong to."""
-    blocks: list[Block] = []
-    section: str | None = None
-    current: list[str] = []
-    current_kind: BlockKind = "paragraph"
+_NUMBERED_HEADING = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+[A-Z][^.:;,!?]*$")
+HeadingMode = Literal["markdown", "layout"]
 
-    def flush() -> None:
-        nonlocal current
-        text = " ".join(current).strip()
+
+def _layout_heading_level(line: str) -> int:
+    """Heading heuristic for extracted PDF text, where markup is gone: a standalone short
+    line without closing punctuation that is numbered ("2.1 Triage" -> level 2) or in title
+    case ("Service Playbooks" -> level 1). Returns 0 when the line is not a heading."""
+    text = line.strip()
+    if not text or len(text) > 70 or text[-1] in ".:;,!?":
+        return 0
+    if m := _NUMBERED_HEADING.match(text):
+        return m.group(1).count(".") + 1
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z'-]*", text) if len(w) > 3]
+    if 1 <= len(text.split()) <= 8 and words and all(w[0].isupper() for w in words):
+        return 1
+    return 0
+
+
+class _BlockBuilder:
+    """Turns lines into blocks while tracking the heading path. State persists across
+    pages, so content on page 2 still knows it sits under the heading from page 1."""
+
+    def __init__(self, mode: HeadingMode) -> None:
+        self.mode = mode
+        self.blocks: list[Block] = []
+        self.path: list[tuple[int, str]] = []
+        self._current: list[str] = []
+        self._kind: BlockKind = "paragraph"
+        self._page: int | None = None
+
+    def _flush(self) -> None:
+        text = " ".join(self._current).strip()
         if text:
-            blocks.append(Block(text, current_kind, page, section))
-        current = []
+            if (
+                self.mode == "layout"
+                and len(self._current) == 1
+                and (level := _layout_heading_level(text))
+            ):
+                self._heading(level, text)
+            else:
+                self.blocks.append(Block(text, self._kind, self._page, self._headings()))
+        self._current = []
 
-    for line in lines:
-        if not line.strip():
-            flush()
-            continue
-        if m := _HEADING.match(line):
-            flush()
-            section = m.group(2).strip()
-            blocks.append(Block(section, "heading", page, section))
-            continue
-        if m := _ITEM.match(line):
-            flush()
-            current_kind = "item"
-            current = [line.strip()]  # keep the number: "4. Schedule ..." is citable
-            continue
-        if not current:
-            current_kind = "paragraph"
-        current.append(line.strip())
-    flush()
-    return blocks
+    def _headings(self) -> tuple[str, ...]:
+        return tuple(title for _, title in self.path)
+
+    def _heading(self, level: int, title: str) -> None:
+        while self.path and self.path[-1][0] >= level:
+            self.path.pop()
+        self.path.append((level, title))
+        self.blocks.append(Block(title, "heading", self._page, self._headings(), level))
+
+    def feed(self, lines: list[str], page: int | None = None) -> None:
+        self._page = page
+        for line in lines:
+            if not line.strip():
+                self._flush()
+                continue
+            if self.mode == "markdown" and (m := _HEADING.match(line)):
+                self._flush()
+                self._heading(len(m.group(1)), m.group(2).strip())
+                continue
+            if m := _ITEM.match(line):
+                self._flush()
+                self._kind = "item"
+                self._current = [line.strip()]  # keep the number: "4. Schedule ..." is citable
+                continue
+            if not self._current:
+                self._kind = "paragraph"
+            self._current.append(line.strip())
+        self._flush()
+
+
+def _blocks_from_lines(
+    lines: list[str], page: int | None = None, mode: HeadingMode = "markdown"
+) -> list[Block]:
+    builder = _BlockBuilder(mode)
+    builder.feed(lines, page)
+    return builder.blocks
 
 
 def _split_front_matter(text: str) -> tuple[dict[str, str], str]:
@@ -147,13 +200,15 @@ def parse_file(path: Path) -> ParsedDocument:
     else:
         raw_meta = _sidecar(path)
         reader = PdfReader(str(path))
-        blocks, pages = [], []
+        builder = _BlockBuilder("layout")
+        pages = []
         for number, page in enumerate(reader.pages, start=1):
             # Layout mode keeps the vertical gaps between paragraphs as blank lines, so
             # paragraph boundaries (and therefore locators) survive extraction.
             text = normalize(page.extract_text(extraction_mode="layout") or "")
             pages.append(text)
-            blocks.extend(_blocks_from_lines(text.split("\n"), page=number))
+            builder.feed(text.split("\n"), page=number)
+        blocks = builder.blocks
         mime, raw = "application/pdf", "\n\n".join(pages)
 
     try:

@@ -11,6 +11,8 @@ Fictional seed data from the assignment brief (sections 6-8). No real people, sy
 | `knowledge/KB-PUB-001.md` | ingestion worker | *Candidate-added.* Public service-desk and ticket-severity guide: exercises company-wide access. |
 | `knowledge/KB-IT-001.pdf` (+ `.meta.json`) | ingestion worker | *Candidate-added.* VPN policy as a **PDF** (generated from `knowledge_src/KB-IT-001.txt` by `scripts/make_sample_pdf.py`). |
 | `knowledge/KB-FIN-001.txt` (+ `.meta.json`) | ingestion worker | *Candidate-added.* Expense policy as **plain text**: exercises Finance isolation. |
+| `knowledge/KB-ENG-003.md` | ingestion worker | *Candidate-added.* Long incident runbook with nested headings and facts that are only unambiguous under their heading (payment vs. search thresholds): stresses chunking. |
+| `knowledge/KB-ENG-004.pdf` (+ `.meta.json`) | ingestion worker | *Candidate-added.* Two-page PDF handbook with numbered bold headings (generated from `knowledge_src/KB-ENG-004.txt`): stresses PDF structure recovery across pages. |
 
 Documents added by the candidate (to exercise public-document access, PDF parsing and
 re-indexing) are marked `source: candidate-added` in their front matter.

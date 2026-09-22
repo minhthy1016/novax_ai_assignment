@@ -2,7 +2,8 @@
 
 Tables arrive with the features that own them, each in its own migration, so the schema
 history mirrors the build order: 0001 identity + inventory, 0002 conversations + usage,
-0003 per-conversation model choice, 0004 knowledge index with row-level security.
+0003 per-conversation model choice, 0004 knowledge index with row-level security,
+0005 least-privilege runtime role, 0006 parent-child chunk context.
 """
 
 from __future__ import annotations
@@ -179,6 +180,7 @@ class Document(Base):
     status: Mapped[str] = mapped_column(Text, default="active")
     doc_updated_at: Mapped[date] = mapped_column(Date)
     embedding_model: Mapped[str] = mapped_column(Text)
+    chunker: Mapped[str | None] = mapped_column(Text)  # chunking config the version was built with
     chunk_count: Mapped[int]
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -196,7 +198,10 @@ class _ChunkColumns:
     locator: Mapped[str] = mapped_column(Text)
     section: Mapped[str | None] = mapped_column(Text)
     page: Mapped[int | None]
-    content: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text)  # the matched (child) text
+    # Parent section handed to the model (parent-child chunking); NULL means use content.
+    context: Mapped[str | None] = mapped_column(Text)
+    headings: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
     embed_text: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int]
     embedding_model: Mapped[str] = mapped_column(Text)

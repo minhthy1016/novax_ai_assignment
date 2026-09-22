@@ -209,51 +209,76 @@ decision → consequences.
   gaps survive extraction) with a `.meta.json` sidecar. Metadata is **mandatory and
   validated**: a document without department and classification is rejected, never indexed
   as "no ACL". Ingestion is confined to the knowledge root (no arbitrary file reads).
+- **Structure recovery:** the parser tracks the full heading path ("Service playbooks >
+  Payment API") and carries it across page breaks. PDFs have no markup, so headings are
+  detected heuristically (standalone short line, numbered "2.1 API Tier" or title case).
+  Before this, PDF chunks had no section context at all and page 2 lost page 1's heading.
 - **Metadata schema:** `documents` = doc_key, version, title, department, classification,
-  status (active/superseded/deleted), content hash, embedding model, source path, MIME,
-  document date. Chunks denormalize department + classification (filtered in the same index
-  scan), plus locator, section, page, token count, embedding model, `is_active`.
-- **Chunking:** structure-aware (headings, list items, paragraphs never split unless
-  oversized), target ~64 tokens, max 160, one sentence of overlap only when an oversized
-  paragraph is split, title+section header prepended to the embedded text. At a 120-token
-  target every sample document collapsed into one chunk and citations could only say
-  "¶1–7"; at 64 the deploy window is cited as ¶1–4 and the injection text lands in its own
-  chunk. To be re-measured (64 vs 120 vs whole-doc) in the evaluation.
-- **Embedding model: `nomic-embed-text` via Ollama (768-d, local).** Documents never leave
-  the machine (required for confidential material, D-15), zero marginal cost, 768 dims fit
-  pgvector HNSW. NIM `nemotron-3-embed-1b` (2048-d) was rejected for the index: data egress,
-  and >2000 dims needs `halfvec`. The embedding model is recorded per chunk; changing it
-  forces a re-index instead of silently mixing vector spaces (D-12). CI uses a deterministic
-  768-d hashed mock with stopwords removed.
-- **Citations:** `KB-ENG-001@v1#¶1–4` is stable (doc key, version, locator); the label
-  shown to users is "Production Deployment Procedure (KB-ENG-001 v1, ¶1–4)". PDF locators
-  include pages ("p.1 ¶3").
+  status (active/superseded/deleted), content hash, embedding model, chunker, source path,
+  MIME, document date. Chunks denormalize department + classification (filtered in the same
+  index scan), plus locator, heading path, page, matched text, parent context, `is_active`.
+- **Chunking - measured, not assumed** (`evaluation/chunking_eval.py`, report in
+  `evaluation/reports/chunking.md`): 34 gold questions over 10 documents (two long,
+  heading-dependent ones added for this), gold evidence is exact source text independent of
+  any chunker, same local embedder and access control for every strategy. Hybrid mode (as
+  in production):
+
+  | Strategy | Recall@1 | Recall@3 | MRR | Tokens to model @3 |
+  |---|---:|---:|---:|---:|
+  | structural-64 (first version) | 0.897 | 0.971 | 0.949 | 152 |
+  | one chunk per page / whole doc | 0.853 | 1.000 | 0.926 | **941** |
+  | fixed window 128/32 (structure-blind) | 0.853 | 1.000 | 0.917 | 401 |
+  | Docling HybridChunker, 256 tok (reference) | 0.912 | 0.971 | 0.949 | 263 |
+  | hierarchical-128 (Docling-style, ours) | 0.971 | 1.000 | 0.980 | 246 |
+  | **parent-child 64/256 (chosen)** | **0.971** | **1.000** | **0.985** | 268 |
+
+  Page-based chunks are the worst trade-off (lower precision, 6x the tokens). Small
+  structural chunks lose context (R@1 0.897). Heading-aware strategies win; parent-child ties
+  or leads everywhere at the same cost and **decouples matching granularity (small chunks,
+  sharp embeddings) from context granularity (the whole section to the model)**, which matters
+  more as documents get longer. Caveat: 34 cases - one case moves a metric by ~0.03; the gap
+  to the first version is consistent in both vector-only and hybrid modes, the gap between
+  the top strategies is not significant.
+- **Docling** was evaluated as a reference (HybridChunker with a tiktoken tokenizer, run in a
+  separate environment), not adopted as a dependency: on these documents it did not beat the
+  in-house hierarchical chunker, and it brings PyTorch and layout models into the image. For
+  scanned PDFs, tables and complex layouts its layout model is the right tool (§6).
+- **Parent-child mechanics:** children are packed to ~64 tokens inside a section; the section
+  (≤256 tokens, never crossing a heading) is stored as `context`. The full heading path is
+  prepended to what is embedded. Changing the chunker changes the content hash, so documents
+  are re-indexed rather than silently mixing chunkings.
+- **Embedding model: `nomic-embed-text` via Ollama (768-d, local)** with its task prefixes
+  (`search_document:` / `search_query:`). Documents never leave the machine (required for
+  confidential material, D-15), zero marginal cost, 768 dims fit pgvector HNSW. NIM
+  `nemotron-3-embed-1b` (2048-d) was rejected for the index: data egress, and >2000 dims
+  needs `halfvec`. The embedding model is recorded per chunk; changing it forces a re-index
+  (D-12). CI uses a deterministic 768-d hashed mock with stopwords removed.
+- **Citations:** the stable reference is `KB-ENG-003@v1#§Service playbooks › Payment API
+  ¶13–14` (doc, version, section, paragraphs; PDFs add pages). The citation snippet is the
+  *matched* passage, so the exact supporting text is shown even though the locator names the
+  whole section.
 
 ### D-21 Retrieval: hybrid search, fusion, relevance gate, top-K
 - Vector (HNSW, cosine) and full-text (tsvector, OR of terms) candidates, 20 each, fused
-  with Reciprocal Rank Fusion (k=60) - no score calibration between two scales needed.
-- **Admission is by semantic similarity**: ≥ the model's `min_relevance` AND within 0.10 of
-  the best hit. Full-text only affects ranking; letting it admit on its own let single
-  common words ("incident", "notes") pull in unrelated chunks.
-- **Calibration** (nomic, sample queries): correct top hits scored 0.65-0.79; irrelevant
-  hits for users without access scored 0.57-0.59. `min_relevance = 0.60`:
-
-  | Query (user) | Before gate | After gate |
-  |---|---|---|
-  | deploy window (U001) | ENG-001 ×2 + PUB 0.589 | ENG-001 ¶1–4, ¶5–7 |
-  | payment incident (U001) | ENG-002 ×2 + PUB 0.416 | ENG-002 ×2 |
-  | deploy window (U003, no eng access) | PUB 0.589, HR 0.569 | nothing → abstain |
-  | parental leave (U001) | nothing | nothing → abstain |
-  | compensation notes (U004) | HR-002 | HR-002 (confidential table) |
-
-- **Top-K = 4:** the corpus answers are 1-2 chunks; 4 leaves room for multi-part
-  questions (E12 used both incident chunks) within ~300 tokens of context.
-- **Reranking:** no cross-encoder. RRF fusion already reorders by two signals, the
-  candidate sets are tiny, and a reranker adds a model and latency to every request. At the
-  1M-document scale a cross-encoder over the top ~50 is proposed (§6); the eval will show
-  whether it pays for itself here.
-- **Nothing admitted → fixed abstention without calling any model** (cheapest possible
-  answer, and it cannot hallucinate).
+  with Reciprocal Rank Fusion (k=60). Full-text matters: on the gold set it lifts Recall@1 of
+  the first chunker from 0.824 (vector only) to 0.897.
+- Sibling children of one section are collapsed, so **top-K = 4 means four distinct
+  sections** (~270 tokens of context in the gold set).
+- **Relevance gate = cost/noise filter, not the abstention mechanism.** Calibration
+  (`evaluation/relevance_calibration.py`) over the 34 gold questions and 12 questions that
+  must be abstained: the weakest real match scores 0.610 but two out-of-scope questions score
+  up to 0.658 - **no similarity threshold separates them** (the embedder sees the topic as
+  related even when the user may not read the answering document). The gate is therefore set
+  just below the weakest real match (`min_relevance = 0.60`, relative margin 0.10) so it never
+  drops real evidence; abstention on the harder cases happens at generation (grounded prompt),
+  and is measured in the evaluation. Clear misses (parental leave, weather) still abstain
+  without any model call. Isolation never depends on this gate.
+- **Through the live API** (`evaluation/retrieval_api_eval.py`; RLS, gate, dedupe, top-4):
+  recall@1 0.941, recall@3 1.000, MRR 0.961.
+- **Reranking:** no cross-encoder. RRF already fuses two signals and the candidate sets are
+  small; recall@3 is 1.000 through the API. At the 1M-document scale a cross-encoder over the
+  top ~50 is proposed (§6).
+- **Nothing admitted -> fixed abstention without calling any model.**
 
 ### D-22 Department isolation: application filter + row-level security
 - Access scope is computed from database permissions: `docs:<dept>` for internal,
@@ -323,5 +348,7 @@ _Maintained continuously._
   despite the instruction to keep "not confirmed" wording. The evaluation measures this
   over repeated runs rather than relying on single samples.
 - One runtime database role for API and worker; a read-only API role is future work.
-- The relevance threshold is calibrated on a small query set; it is re-measured in the
-  evaluation (false abstentions vs. irrelevant context).
+- The relevance gate cannot separate answerable from unanswerable questions on similarity
+  alone (see D-21); abstention on near-topic questions relies on the grounded prompt.
+- The gold retrieval set has 34 cases; differences under ~0.03 are within one case.
+- Citation locators name the parent section; the precise matched passage is in the snippet.

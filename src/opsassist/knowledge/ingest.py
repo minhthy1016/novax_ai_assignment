@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from opsassist.config import Settings, get_settings
 from opsassist.db.models import INDEX_DIMENSIONS, Chunk, ConfidentialChunk, Document
 from opsassist.gateway.gateway import CallContext, LLMGateway
-from opsassist.knowledge.chunking import chunk_document
+from opsassist.knowledge.chunking import ChunkingConfig, chunk_document
 from opsassist.knowledge.parsing import SUPPORTED_SUFFIXES, ParsedDocument, parse_file
 from opsassist.logging_setup import get_logger
 
@@ -48,9 +48,26 @@ class IngestResult:
     chunks: int
 
 
-def content_hash(doc: ParsedDocument) -> str:
+def chunking_config(settings: Settings) -> ChunkingConfig:
+    return ChunkingConfig(
+        strategy=settings.chunking_strategy,
+        target_tokens=settings.chunk_target_tokens,
+        max_tokens=settings.chunk_max_tokens,
+    )
+
+
+def chunker_id(cfg: ChunkingConfig) -> str:
+    return f"{cfg.strategy}:{cfg.target_tokens}/{cfg.max_tokens}/{cfg.split_tokens}"
+
+
+def content_hash(doc: ParsedDocument, chunker: str = "") -> str:
+    """Text + metadata + chunking config: changing any of them re-indexes the document."""
     payload = json.dumps(
-        {"meta": doc.meta.model_dump(mode="json"), "blocks": [b.text for b in doc.blocks]},
+        {
+            "meta": doc.meta.model_dump(mode="json"),
+            "blocks": [[b.text, list(b.headings)] for b in doc.blocks],
+            "chunker": chunker,
+        },
         sort_keys=True,
     )
     return hashlib.sha256(payload.encode()).hexdigest()
@@ -100,7 +117,8 @@ async def ingest_file(
         raise IngestionPolicyError(
             f"{meta.document_id} is confidential and {model_id} sends data off-box"
         )
-    digest = content_hash(doc)
+    cfg = chunking_config(settings)
+    digest = content_hash(doc, chunker_id(cfg))
 
     async with factory() as session, session.begin():
         await enable_ingest(session)
@@ -116,7 +134,7 @@ async def ingest_file(
         ):
             return IngestResult(meta.document_id, active.version, "unchanged", active.chunk_count)
 
-    chunks = chunk_document(doc)
+    chunks = chunk_document(doc, cfg)
     ctx = CallContext(request_id=request_id or f"ingest-{uuid.uuid4().hex[:12]}")
     vectors: list[list[float]] = []
     for start in range(0, len(chunks), EMBED_BATCH):
@@ -169,6 +187,7 @@ async def ingest_file(
             content_sha256=digest,
             doc_updated_at=meta.updated_at,
             embedding_model=model_id,
+            chunker=chunker_id(cfg),
             chunk_count=len(chunks),
         )
         session.add(new_doc)
@@ -185,6 +204,8 @@ async def ingest_file(
                 section=c.section,
                 page=c.page_start,
                 content=c.text,
+                context=c.context if c.context != c.text else None,
+                headings=list(c.headings),
                 embed_text=c.embed_text,
                 token_count=c.token_count,
                 embedding_model=model_id,

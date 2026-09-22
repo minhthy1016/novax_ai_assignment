@@ -98,6 +98,14 @@ type and latency only.
   nothing relevant is found the assistant says so, without calling a model.
 - `POST /api/search` runs the same scoped retrieval and returns ranked chunks with scores.
 - Confidential documents go into a separate index and are answered by local models only.
+- Chunking is parent-child: small chunks are matched, the whole section is given to the model.
+  The choice was measured against 7 alternatives (including Docling's HybridChunker):
+
+```bash
+uv run python evaluation/chunking_eval.py            # strategy comparison -> evaluation/reports/chunking.md
+uv run python -m evaluation.relevance_calibration    # relevance-gate calibration
+uv run python -m evaluation.retrieval_api_eval       # gold set through the running API
+```
 
 ```bash
 curl -s localhost:8000/api/chat -H "$AUTH" -H 'content-type: application/json' \

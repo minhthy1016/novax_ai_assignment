@@ -1,0 +1,276 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 2675 >>
+stream
+BT
+56 780 Td
+/F2 14 Tf
+0 -8 Td
+(Production Server Operations Handbook) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(This handbook covers routine operations for Engineering production servers: patching,) Tj
+0 -14 Td
+/F1 11 Tf
+(health checks, capacity limits and backups. Changes outside these rules need Engineering) Tj
+0 -14 Td
+/F1 11 Tf
+(Manager approval.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(1 Scope) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(The handbook applies to the web tier, the API tier and the worker tier in the production) Tj
+0 -14 Td
+/F1 11 Tf
+(environment. Staging servers follow the same rules except where a section says otherwise.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(2 Patching) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Security patches are applied during the approved maintenance window. Emergency patches for) Tj
+0 -14 Td
+/F1 11 Tf
+(actively exploited vulnerabilities may be applied at any time with incident commander) Tj
+0 -14 Td
+/F1 11 Tf
+(approval.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(2.1 Web Tier) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Web servers are patched in batches of at most 25% of the fleet so that capacity never) Tj
+0 -14 Td
+/F1 11 Tf
+(drops below 75%. Each batch must pass health checks for 10 minutes before the next batch) Tj
+0 -14 Td
+/F1 11 Tf
+(starts.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(2.2 API Tier) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(API servers are patched one server at a time. A server may only be returned to the load) Tj
+0 -14 Td
+/F1 11 Tf
+(balancer after its health check has passed three times in a row. The API tier is never) Tj
+0 -14 Td
+/F1 11 Tf
+(patched during a deployment window.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(2.3 Worker Tier) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Worker servers are drained before patching: no new jobs are assigned, and running jobs are) Tj
+0 -14 Td
+/F1 11 Tf
+(allowed up to 15 minutes to finish. Jobs still running after 15 minutes are re-queued, not) Tj
+0 -14 Td
+/F1 11 Tf
+(killed.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(3 Health Checks) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Every production server exposes a health endpoint that is polled every 30 seconds. A) Tj
+0 -14 Td
+/F1 11 Tf
+(server is marked degraded after three consecutive failed checks and offline after ten) Tj
+0 -14 Td
+/F1 11 Tf
+(consecutive failed checks.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 1656 >>
+stream
+BT
+56 780 Td
+/F1 11 Tf
+(A degraded server keeps serving traffic but is flagged on the operations dashboard. An) Tj
+0 -14 Td
+/F1 11 Tf
+(offline server is removed from the load balancer automatically and the owning team is) Tj
+0 -14 Td
+/F1 11 Tf
+(paged.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(4 Capacity Limits) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Sustained CPU above 85% for 20 minutes on any web or API server triggers an automatic) Tj
+0 -14 Td
+/F1 11 Tf
+(scale-out of two servers. Memory above 90% for 10 minutes triggers a page to the owning) Tj
+0 -14 Td
+/F1 11 Tf
+(team instead, because memory pressure usually indicates a leak rather than load.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Disk usage above 80% raises a warning and above 95% raises a page. Log volumes are rotated) Tj
+0 -14 Td
+/F1 11 Tf
+(daily and kept for 14 days on the server.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F2 14 Tf
+0 -8 Td
+(5 Backups) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Database servers are backed up every 6 hours, and backups are kept for 35 days. A restore) Tj
+0 -14 Td
+/F1 11 Tf
+(test is performed on the first Tuesday of every month; the result is recorded in the) Tj
+0 -14 Td
+/F1 11 Tf
+(change log.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+/F1 11 Tf
+(Application servers are not backed up. They are rebuilt from the release artifact and) Tj
+0 -14 Td
+/F1 11 Tf
+(configuration management, which is why no manual change may be made on a production server) Tj
+0 -14 Td
+/F1 11 Tf
+(without also committing it to configuration management.) Tj
+0 -14 Td
+/F1 11 Tf
+() Tj
+0 -14 Td
+ET
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000266 00000 n 
+0000000402 00000 n 
+0000003129 00000 n 
+0000003265 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+4973
+%%EOF

@@ -54,6 +54,7 @@ async def search(request: Request, body: SearchRequest, principal: CurrentPrinci
                 locator=c.locator,
                 ref=c.stable_ref,
                 content=c.content,
+                context=c.context,
                 similarity=c.similarity,
                 fts_rank=c.fts_rank,
                 score=c.score,

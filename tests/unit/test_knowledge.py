@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from opsassist.auth import Principal
-from opsassist.knowledge.chunking import DASH, MAX_TOKENS, chunk_document
+from opsassist.knowledge.chunking import DASH, LOCATOR_SEP, ChunkingConfig, chunk_document
 from opsassist.knowledge.ingest import IngestionPolicyError, content_hash, resolve_within_root
 from opsassist.knowledge.parsing import ParseError, parse_file
 from opsassist.knowledge.retrieval import RetrievedChunk
@@ -81,8 +81,11 @@ def test_documents_without_metadata_are_rejected(tmp_path: Path) -> None:
             parse_file(tmp_path / name)
 
 
+STRUCTURAL = ChunkingConfig("structural")
+
+
 def test_chunks_carry_citable_locators() -> None:
-    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-001.md"))
+    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-001.md"), STRUCTURAL)
     assert [c.locator for c in chunks] == [f"¶1{DASH}4", f"¶5{DASH}7"]
     assert "21:00-23:00 MYT" in chunks[0].text
     assert chunks[0].embed_text.startswith("Production Deployment Procedure\n")  # context header
@@ -107,11 +110,40 @@ def test_oversized_paragraph_is_split_with_sentence_overlap(tmp_path: Path) -> N
         "---\ndocument_id: KB-LNG-001\ntitle: Long\ndepartment: engineering\n"
         "classification: internal\nupdated_at: 2026-01-01\n---\n" + " ".join(sentences)
     )
-    chunks = chunk_document(parse_file(doc))
+    chunks = chunk_document(parse_file(doc), STRUCTURAL)
     assert len(chunks) > 1
-    assert all(c.token_count <= MAX_TOKENS for c in chunks)
+    assert all(c.token_count <= STRUCTURAL.split_tokens for c in chunks)
     last_of_first = chunks[0].text.rsplit(". ", 1)[-1]
     assert last_of_first.rstrip(".") in chunks[1].text  # one sentence of overlap
+
+
+def test_pdf_heading_path_survives_page_breaks() -> None:
+    doc = parse_file(KNOWLEDGE / "KB-ENG-004.pdf")
+    page2 = [b for b in doc.blocks if b.page == 2 and b.kind != "heading"]
+    assert page2 and all(b.headings for b in page2)  # page 2 content still knows its section
+    api_tier = next(b for b in doc.blocks if "one server at a time" in b.text)
+    assert api_tier.headings[-2:] == ("2 Patching", "2.2 API Tier")
+
+
+def test_parent_child_matches_small_but_hands_over_the_section() -> None:
+    chunks = chunk_document(
+        parse_file(KNOWLEDGE / "KB-ENG-003.md"), ChunkingConfig("parent_child", 64, 256)
+    )
+    assert all(c.text in c.context for c in chunks)
+    payment = [c for c in chunks if c.section == "Payment API"]
+    assert payment and all("Service playbooks > Payment API" in c.embed_text for c in payment)
+    assert all("90% for 10 minutes" in c.context for c in payment)
+    expected = f"§Service playbooks{LOCATOR_SEP}Payment API"
+    assert all(c.locator.startswith(expected) for c in payment)
+    # Context-dependent twin fact lives under a different heading, never mixed in.
+    assert all("80% for 15 minutes" not in c.context for c in payment)
+
+
+def test_changing_the_chunker_forces_reindex() -> None:
+    doc = parse_file(KNOWLEDGE / "KB-ENG-001.md")
+    assert content_hash(doc, "parent_child:64/256/160") != content_hash(
+        doc, "structural:64/256/160"
+    )
 
 
 def test_hash_changes_with_metadata_not_only_text(tmp_path: Path) -> None:
@@ -147,6 +179,8 @@ def chunk(n: int, content: str, doc_key: str = "KB-ENG-001") -> RetrievedChunk:
         classification="internal",
         locator=f"¶{n}",
         content=content,
+        context=content,
+        doc_updated_at="2026-08-30",
         similarity=0.8,
         fts_rank=None,
         score=0.1,

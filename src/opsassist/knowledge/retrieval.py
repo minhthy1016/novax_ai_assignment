@@ -6,6 +6,8 @@ Pipeline (D-21):
    (tsvector, OR-of-terms so long questions still match). Exact tokens such as
    ``web-prod-03`` or ``14 August`` are where full-text search beats embeddings.
 3. Reciprocal Rank Fusion (k=60) merges the lists without calibrating two score scales.
+   Matching happens on small chunks; the model receives each chunk's parent section, and
+   sibling chunks of the same section are collapsed, so top-K means K distinct sections.
 4. Relevance gate on semantic similarity: a candidate survives if its cosine similarity is
    at least the model's ``min_relevance`` AND within ``retrieval_relative_margin`` of the
    best hit. Full-text matches improve *ranking* (via RRF) but cannot admit a chunk on
@@ -48,7 +50,9 @@ class RetrievedChunk:
     department: str
     classification: str
     locator: str
-    content: str
+    content: str  # the matched passage (cited as the snippet)
+    context: str  # the section handed to the model
+    doc_updated_at: str
     similarity: float | None
     fts_rank: float | None
     score: float
@@ -78,6 +82,8 @@ class _Candidate:
             classification=str(r["classification"]),
             locator=str(r["locator"]),
             content=str(r["content"]),
+            context=str(r["context"]),
+            doc_updated_at=str(r["doc_updated_at"]),
             similarity=self.similarity,
             fts_rank=self.fts_rank,
             score=self.rrf,
@@ -122,7 +128,8 @@ def _candidate_sql(table: str, acl_sql: str) -> tuple[str, str]:
         raise ValueError(f"unknown chunk table {table!r}")
     base = f"""
         SELECT c.id, c.doc_key, c.version, d.title, c.department, c.classification,
-               c.locator, c.content, {{score}} AS score
+               c.locator, c.content, coalesce(c.context, c.content) AS context,
+               d.doc_updated_at, {{score}} AS score
         FROM {table} c JOIN documents d ON d.id = c.document_id
         WHERE c.is_active AND c.embedding_model = :model AND ({acl_sql}) {{extra}}
         ORDER BY {{order}} LIMIT :limit
@@ -209,6 +216,15 @@ async def retrieve(
             continue
         kept.append(cand.to_chunk())
     kept.sort(key=lambda c: c.score, reverse=True)
+    # Collapse children of the same parent section: keep the best-scoring match per section.
+    seen: set[tuple[str, str, int, str]] = set()
+    distinct: list[RetrievedChunk] = []
+    for c in kept:
+        key = (c.table, c.doc_key, c.version, c.locator)
+        if key not in seen:
+            seen.add(key)
+            distinct.append(c)
+    kept = distinct
     elapsed = time.perf_counter() - started
     RETRIEVAL_LATENCY.observe(elapsed)
     return RetrievalResult(

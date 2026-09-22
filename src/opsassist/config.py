@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # not send data off-box (confidential documents are embedded with it).
     index_embedding_model: str = "ollama/nomic-embed-text"
     knowledge_root: Path = Path("sample_data/knowledge")
+    # Chunking (measured in evaluation/reports/chunking.md; see D-20).
+    chunking_strategy: Literal["structural", "hierarchical", "parent_child"] = "parent_child"
+    chunk_target_tokens: int = Field(default=64, ge=16, le=512)
+    chunk_max_tokens: int = Field(default=256, ge=32, le=2048)
     retrieval_top_k: int = Field(default=4, ge=1, le=20)
     retrieval_candidates: int = Field(default=20, ge=1, le=200)
     # Admit only hits within this similarity margin of the best hit (drops the weak tail).

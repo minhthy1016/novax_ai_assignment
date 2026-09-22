@@ -1,4 +1,4 @@
-VPN Access Policy
+# VPN Access Policy
 
 Remote access to internal systems requires a personal OpenVPN profile.
 

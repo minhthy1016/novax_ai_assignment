@@ -152,7 +152,8 @@ class SearchHit(BaseModel):
     title: str
     locator: str
     ref: str
-    content: str
+    content: str  # the matched passage
+    context: str  # the section the model would receive
     similarity: float | None
     fts_rank: float | None
     score: float

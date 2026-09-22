@@ -81,8 +81,9 @@ def render_sources(chunks: list[RetrievedChunk]) -> str:
     blocks = []
     for n, c in enumerate(chunks, start=1):
         blocks.append(
-            f'<source id="{n}" title="{_attr(c.title)}" ref="{_attr(c.stable_ref)}">\n'
-            f"{html.escape(c.content, quote=False)}\n</source>"
+            f'<source id="{n}" title="{_attr(c.title)}" ref="{_attr(c.stable_ref)}" '
+            f'updated="{_attr(c.doc_updated_at)}">\n'
+            f"{html.escape(c.context, quote=False)}\n</source>"
         )
     return "\n\n".join(blocks)
 
@@ -133,7 +134,7 @@ def finalize(answer: str, chunks: list[RetrievedChunk]) -> GroundedAnswer:
             title=chunks[n - 1].title,
             locator=chunks[n - 1].locator,
             ref=chunks[n - 1].stable_ref,
-            snippet=chunks[n - 1].content[:240],
+            snippet=chunks[n - 1].content[:300],  # the matched passage within the section
         )
         for n in order
     ]

@@ -32,13 +32,13 @@ jobs: ## Show recent ingestion jobs
 	$(COMPOSE) exec postgres psql -U opsassist -c "SELECT source_path, status, attempts, doc_key, version, detail, updated_at FROM ingestion_jobs ORDER BY updated_at DESC LIMIT 20"
 
 lint: ## Ruff + mypy
-	uv run ruff check src tests migrations
-	uv run ruff format --check src tests migrations
+	uv run ruff check src tests migrations evaluation scripts
+	uv run ruff format --check src tests migrations evaluation scripts
 	uv run mypy src
 
 fmt: ## Auto-format
-	uv run ruff check --fix src tests migrations
-	uv run ruff format src tests migrations
+	uv run ruff check --fix src tests migrations evaluation scripts
+	uv run ruff format src tests migrations evaluation scripts
 
 test: ## Unit tests (no services needed)
 	uv run pytest -m "not integration"

@@ -27,8 +27,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
       - run: uv sync --frozen
-      - run: uv run ruff check src tests migrations
-      - run: uv run ruff format --check src tests migrations
+      - run: uv run ruff check src tests migrations evaluation scripts
+      - run: uv run ruff format --check src tests migrations evaluation scripts
       - run: uv run mypy src
       - run: uv run pytest -m "not integration"
       - run: uv run alembic upgrade head && uv run python -m opsassist.seed
