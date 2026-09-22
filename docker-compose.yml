@@ -9,6 +9,7 @@ x-app-env: &app-env
   OPSASSIST_JWT_SECRET: ${OPSASSIST_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}
   # Provider keys are read from the caller's environment or .env; never written here.
   NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
 
 services:

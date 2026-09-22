@@ -133,12 +133,15 @@ class OllamaProvider:
     def _chat_payload(
         self, model: str, messages: list[ChatMessage], params: ChatParams, stream: bool
     ) -> dict[str, Any]:
+        options: dict[str, Any] = {"num_predict": params.max_tokens}
+        if params.temperature is not None:
+            options["temperature"] = params.temperature
         return {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": stream,
             "keep_alive": self._keep_alive,
-            "options": {"temperature": params.temperature, "num_predict": params.max_tokens},
+            "options": options,
         }
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:

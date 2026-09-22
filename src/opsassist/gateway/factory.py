@@ -12,6 +12,7 @@ from opsassist.db.models import LLMUsage
 from opsassist.gateway.catalog import Catalog, ProviderConfig, load_catalog
 from opsassist.gateway.gateway import AttemptRecord, CallContext, GatewayConfig, LLMGateway
 from opsassist.logging_setup import get_logger
+from opsassist.providers.anthropic_provider import AnthropicProvider
 from opsassist.providers.mock import MockProvider
 from opsassist.providers.ollama import OllamaProvider
 from opsassist.providers.openai_compat import OpenAICompatibleProvider
@@ -32,6 +33,14 @@ def build_provider(name: str, cfg: ProviderConfig) -> tuple[object | None, Provi
         case "ollama":
             ollama_url = cfg.resolved_base_url() or "http://localhost:11434"
             return OllamaProvider(name, base_url=ollama_url), ProviderStatus(True)
+        case "anthropic":
+            anthropic_key = cfg.api_key()
+            if anthropic_key is None:
+                return None, ProviderStatus(False, f"{cfg.api_key_env} not set")
+            return (
+                AnthropicProvider(name, api_key=anthropic_key, base_url=cfg.resolved_base_url()),
+                ProviderStatus(True),
+            )
         case "openai_compatible":
             key = cfg.api_key()
             if cfg.api_key_env and key is None:

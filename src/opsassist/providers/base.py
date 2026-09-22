@@ -35,7 +35,8 @@ class Usage:
 
 @dataclass(frozen=True, slots=True)
 class ChatParams:
-    temperature: float = 0.2
+    # None = do not send a sampling setting (some models reject any temperature value).
+    temperature: float | None = 0.2
     max_tokens: int = 1024
 
 

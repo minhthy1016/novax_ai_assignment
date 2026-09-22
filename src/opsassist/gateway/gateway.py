@@ -22,6 +22,7 @@ a mid-stream failure ends the stream with an explicit error event instead.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -222,7 +223,7 @@ class LLMGateway:
         async def invoke(spec: ModelSpec) -> ChatResult:
             provider = self.chat_provider(spec)
             assert provider is not None
-            return await provider.chat(spec.provider_model, messages, params)
+            return await provider.chat(spec.provider_model, messages, _params_for(spec, params))
 
         result, spec, attempts = await self._run(
             "chat", targets, ctx, invoke, lambda r: r.usage, self._config.request_deadline_s
@@ -290,7 +291,9 @@ class LLMGateway:
                 produced: list[str] = []
                 emitted = False
                 ttft_ms: float | None = None
-                agen = provider.stream_chat(spec.provider_model, messages, params)
+                agen = provider.stream_chat(
+                    spec.provider_model, messages, _params_for(spec, params)
+                )
                 try:
                     item = await _next_item(
                         agen, min(cfg.timeout_s, remaining), spec.provider, "first token"
@@ -565,6 +568,12 @@ class LLMGateway:
                 await self._recorder.record(ctx, record)
             except Exception:
                 log.exception("usage_record_failed", model=record.model_id)
+
+
+def _params_for(spec: ModelSpec, params: ChatParams) -> ChatParams:
+    if not spec.supports_temperature and params.temperature is not None:
+        return dataclasses.replace(params, temperature=None)
+    return params
 
 
 def _update_breaker(breaker: CircuitBreaker, err: ProviderError) -> None:

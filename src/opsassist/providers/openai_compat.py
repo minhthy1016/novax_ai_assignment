@@ -146,10 +146,11 @@ class OpenAICompatibleProvider:
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "temperature": params.temperature,
             "max_tokens": params.max_tokens,
             "stream": stream,
         }
+        if params.temperature is not None:
+            payload["temperature"] = params.temperature
         if stream:
             payload["stream_options"] = {"include_usage": True}
         return payload
