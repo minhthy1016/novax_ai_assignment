@@ -21,11 +21,21 @@ def test_unsafe_request_id_is_replaced(bad: str | None) -> None:
 
 
 def test_redaction_masks_secret_like_keys() -> None:
-    event = {"event": "x", "api_key": "sk-1", "Authorization": "Bearer t", "user": "U001"}
+    event = {
+        "event": "x",
+        "api_key": "sk-1",
+        "Authorization": "Bearer t",
+        "access_token": "eyJ...",
+        "jwt_secret": "s",
+        "user": "U001",
+        "prompt_tokens": 70,
+        "completion_tokens": 30,
+    }
     out = redact_sensitive(None, "info", event)
-    assert out["api_key"] == REDACTED
-    assert out["Authorization"] == REDACTED
-    assert out["user"] == "U001"
+    for key in ("api_key", "Authorization", "access_token", "jwt_secret"):
+        assert out[key] == REDACTED, key
+    # Usage counters are telemetry, not secrets.
+    assert (out["user"], out["prompt_tokens"], out["completion_tokens"]) == ("U001", 70, 30)
 
 
 def test_logs_are_single_line_json(capsys: pytest.CaptureFixture[str]) -> None:

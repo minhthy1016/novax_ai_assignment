@@ -9,6 +9,7 @@ refuses to start a non-dev environment that still uses a development default.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
@@ -40,10 +41,35 @@ class Settings(BaseSettings):
     # Readiness probes must answer quickly even when a dependency hangs.
     dependency_check_timeout_s: float = Field(default=2.0, gt=0, le=10)
 
+    # Model gateway. Provider endpoints, models and fallback routes live in the catalog file.
+    models_config: Path = Path("config/models.toml")
+    # None = enabled only in dev/test. The mock provider must never serve production traffic.
+    enable_mock_provider: bool | None = None
+    request_deadline_s: float = Field(default=120.0, gt=0, le=600)
+    stream_deadline_s: float = Field(default=300.0, gt=0, le=1800)
+    stream_idle_timeout_s: float = Field(default=30.0, gt=0, le=300)
+
+    # Conversation window sent to the model (Task 4 refines this with summaries).
+    history_max_messages: int = Field(default=20, ge=0, le=200)
+    history_token_budget: int = Field(default=3000, ge=0, le=100_000)
+
+    @property
+    def allow_any_model(self) -> bool:
+        """Outside dev/test, clients may only pick from the catalog's ``selectable`` list."""
+        return self.env in ("dev", "test")
+
+    @property
+    def mock_provider_enabled(self) -> bool:
+        if self.enable_mock_provider is None:
+            return self.env in ("dev", "test")
+        return self.enable_mock_provider
+
     @model_validator(mode="after")
     def validate_for_env(self) -> Settings:
         if self.env in ("staging", "prod") and self.jwt_secret.get_secret_value() == DEV_JWT_SECRET:
             raise ValueError("OPSASSIST_JWT_SECRET must be set outside dev/test environments")
+        if self.env == "prod" and self.enable_mock_provider:
+            raise ValueError("the mock provider cannot be enabled in prod")
         return self
 
 

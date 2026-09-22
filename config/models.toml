@@ -1,0 +1,153 @@
+# Model catalog and routing. Changing providers or models is a config change here —
+# business logic only ever asks for a route name ("chat-default") or a model id.
+#
+# Secrets are never written in this file: `api_key_env` names the environment variable
+# that holds the key. A provider whose key is missing is disabled, not an error.
+
+# End-user model picker: exactly these can be chosen (and switched between within a
+# conversation). The chosen model goes first; the others follow as fallbacks.
+selectable = ["nim/gpt-oss-20b", "claude/sonnet-4.5", "ollama/llama3.2-3b"]
+
+[providers.nim]
+kind = "openai_compatible"
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key_env = "NVIDIA_API_KEY"
+send_input_type = true      # NIM embedding models require input_type=query|passage
+timeout_s = 60              # per attempt; measured ~59s for a trivial call on the free tier
+max_attempts = 2
+data_egress = true          # requests leave our trust boundary
+
+[providers.anthropic]
+kind = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"   # disabled (shown unavailable) until the key is set
+timeout_s = 60
+max_attempts = 2
+data_egress = true
+
+[providers.ollama]
+kind = "ollama"
+base_url = "http://localhost:11434"
+base_url_env = "OLLAMA_BASE_URL"   # overrides base_url (compose sets host.docker.internal)
+timeout_s = 60
+max_attempts = 2
+data_egress = false
+
+[providers.mock]
+kind = "mock"
+timeout_s = 2
+max_attempts = 3
+data_egress = false
+
+# Prices are USD per 1M tokens. NIM trial usage is free; the numbers below are
+# *reference* prices for a paid hosted equivalent, so cost estimates show what the same
+# traffic would cost in production. Local models are priced at 0 (hardware cost is
+# covered in the scale proposal, not per request).
+
+[[models]]
+id = "nim/gpt-oss-20b"
+provider = "nim"
+provider_model = "openai/gpt-oss-20b"
+kind = "chat"
+context_window = 131072
+input_usd_per_mtok = 0.05
+output_usd_per_mtok = 0.20
+
+[[models]]
+id = "claude/sonnet-4.5"
+provider = "anthropic"
+provider_model = "claude-sonnet-4-5"
+kind = "chat"
+context_window = 200000
+input_usd_per_mtok = 3.00    # reference list price; verify at anthropic.com/pricing
+output_usd_per_mtok = 15.00
+
+[[models]]
+id = "ollama/llama3.2-3b"
+provider = "ollama"
+provider_model = "llama3.2:3b"
+kind = "chat"
+context_window = 131072
+
+[[models]]
+id = "nim/nemotron-3-embed-1b"
+provider = "nim"
+provider_model = "nvidia/nemotron-3-embed-1b"
+kind = "embedding"
+dimensions = 2048
+input_usd_per_mtok = 0.01
+
+[[models]]
+id = "ollama/nomic-embed-text"
+provider = "ollama"
+provider_model = "nomic-embed-text"
+kind = "embedding"
+dimensions = 768
+
+[[models]]
+id = "mock/echo"
+provider = "mock"
+provider_model = "mock-echo"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/echo-alt"      # second healthy mock, for model-switching tests
+provider = "mock"
+provider_model = "mock-echo"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/slow"
+provider = "mock"
+provider_model = "mock-slow"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/flaky"
+provider = "mock"
+provider_model = "mock-flaky"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/down"
+provider = "mock"
+provider_model = "mock-down"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/ratelimit"
+provider = "mock"
+provider_model = "mock-ratelimit"
+kind = "chat"
+context_window = 32768
+
+[[models]]
+id = "mock/embed"
+provider = "mock"
+provider_model = "mock-embed"
+kind = "embedding"
+dimensions = 256
+
+# Routes are ordered fallback chains. Chat routes may cross providers.
+# Embedding routes deliberately have ONE target: vectors from different models live in
+# different spaces, so "falling back" to another embedding model would silently corrupt
+# retrieval. Embedding failures retry, then fail loudly.
+
+[routes]
+chat-default = ["nim/gpt-oss-20b", "claude/sonnet-4.5", "ollama/llama3.2-3b"]
+chat-local = ["ollama/llama3.2-3b"]
+chat-mock = ["mock/echo"]
+demo-failover = ["mock/down", "mock/echo"]
+demo-timeout = ["mock/slow", "mock/echo"]
+embed-default = ["ollama/nomic-embed-text"]
+embed-nim = ["nim/nemotron-3-embed-1b"]
+embed-mock = ["mock/embed"]
+
+[defaults]
+chat = "chat-default"
+embedding = "embed-default"
+
