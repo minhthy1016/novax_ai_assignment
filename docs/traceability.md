@@ -1,7 +1,10 @@
 # Requirement traceability
 
 Every requirement in the brief, mapped to where it is implemented and the evidence that
-proves it. Status: ✅ done and verified · 🟡 partial · ⬜ not started · ➖ out of scope (explained).
+proves it. Status: ✅ done and verified ·
+                   🟡 partial · 
+                   ⬜ not started · 
+                   ➖ out of scope (explained).
 
 Updated at the end of each build day. A requirement is only ✅ when a test or a reproducible
 command demonstrates it — "the code exists" is not enough.
@@ -14,10 +17,10 @@ command demonstrates it — "the code exists" is not enough.
 | T1.3 | `POST /api/embeddings` | `api/models.py::embeddings` | `test_embeddings`; live Ollama (768-d) and NIM (2048-d) | ✅ |
 | T1.4 | `GET /api/models` | `api/models.py::list_models` (availability, circuit, egress, prices) | `test_models_lists_catalog_with_availability` | ✅ |
 | T1.5 | `GET /api/conversations/{id}` | `api/chat.py::get_conversation` (owner-scoped; others get 404) | `test_conversation_of_another_user_is_not_found` | ✅ |
-| T1.6 | Configurable provider/model without changing business logic | `config/models.toml` + `gateway/catalog.py` | `tests/unit/test_catalog.py` | ✅ |
+| T1.6 | Configurable provider/model without changing business logic | `config/models.toml` + `gateway/catalog.py`; 3-model picker + per-conversation switching (D-16) | `tests/unit/test_catalog.py`, `test_switching_models_keeps_the_conversation`, `tests/integration/test_models_via_api.py` (every catalog model → 200 or controlled error) | ✅ |
 | T1.7 | Streaming, timeouts, retries with backoff, cancellation | `gateway/gateway.py`, `gateway/resilience.py` | `test_transient_errors_are_retried_with_backoff`, `test_timeout_triggers_fallback`, `test_stream_idle_timeout_is_enforced`, `test_stream_cancellation_records_cancelled_usage`; live disconnect → `partial` + `cancelled` | ✅ |
 | T1.8 | Usage tracking, correlation IDs, graceful provider failure | `llm_usage` per attempt; `middleware.py`; error envelope with `request_id` | `test_success_records_usage_and_cost`, `test_total_provider_failure_is_a_controlled_503`; live invalid NIM key → fallback to Ollama | ✅ |
-| T1.9 | ≥2 provider adapters (one may be mock) | `providers/openai_compat.py` (NIM), `providers/ollama.py` (native), `providers/mock.py` | `tests/unit/test_adapters.py` (wire formats + error mapping) | ✅ |
+| T1.9 | ≥2 provider adapters (one may be mock) | `providers/openai_compat.py` (NIM), `providers/anthropic_provider.py` (Claude, official SDK), `providers/ollama.py` (native), `providers/mock.py` | `tests/unit/test_adapters.py`, `tests/unit/test_anthropic_adapter.py` | ✅ (Claude verified against mocked HTTP only — no API key) |
 
 ## Task 2 - RAG knowledge system
 | ID | Requirement | Implementation | Evidence | Status |
@@ -64,7 +67,7 @@ command demonstrates it — "the code exists" is not enough.
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
 | T6.1 | Malicious document indexed; instructions not followed | `sample_data/knowledge/KB-TEST-999.md` | | 🟡 |
-| T6.2 | Authentication + RBAC/ABAC | `auth.py` (JWT, pinned alg/aud/iss; permissions from DB per request) | `tests/unit/test_auth.py`, `test_api_requires_authentication` | 🟡 authN done; authZ policies day 4 |
+| T6.2 | Authentication + RBAC/ABAC | `auth.py`: role-bound JWT (user + role re-checked per request), permissions from DB only | `test_every_api_route_requires_a_token`, `test_token_is_rejected_after_role_change`, `test_token_is_rejected_after_deactivation` | 🟡 authN done; authZ policies day 4 |
 | T6.3 | Department isolation + least-privilege tools | | | ⬜ |
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |
 | T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input` | 🟡 rate limiting day 4 |

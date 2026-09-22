@@ -38,7 +38,7 @@ engine before anything executes.
 | Vector store | pgvector (same Postgres) | Chunk embeddings + department / classification / version metadata |
 | Cache, limits, queue | Redis 7 | Rate limits, cache, worker broker |
 | Worker | Dramatiq _(day 3)_ | Ingestion, re-indexing, eval jobs, dead-letter handling |
-| LLM providers | NVIDIA NIM (OpenAI-compatible), Ollama (native API), deterministic mock | Behind `ChatProvider` / `EmbeddingProvider` protocols |
+| LLM providers | NVIDIA NIM (OpenAI-compatible), Claude (official Anthropic SDK), Ollama (native API), deterministic mock | Behind `ChatProvider` / `EmbeddingProvider` protocols |
 | Observability | structlog JSON, Prometheus, Opik (optional profile) | Logs, metrics, LLM traces and eval experiments |
 | Demo UI | Flowise (optional profile) | Thin client of `/api/chat` only — holds no policy or credentials |
 
@@ -88,11 +88,18 @@ decision → consequences.
   would add a service without adding capability. It is a candidate for a future
   `query_metrics` tool over governed analytics data (§7).
 
-### D-08 Local token issuer as a stand-in for the company IdP
-- `POST /api/auth/dev-token` mints HS256 JWTs for seeded users and is **only mounted in
-  dev/test**. Tokens carry identity (`sub`) only; department and permissions are read from
-  the database on each request, so revocation is immediate. Verification pins the
-  algorithm (rejects `alg=none`), audience and issuer.
+### D-08 Role-bound JWT; local issuer as a stand-in for the company IdP
+- Nothing under `/api` runs without a valid token (enforced by a test that enumerates every
+  route from the OpenAPI schema). Only `/healthz`, `/readyz`, `/metrics` and the dev-only
+  issuer are public — probes and scrapers cannot carry user tokens.
+- Tokens bind **user ID + assigned role** (`sub`, `role`). Each request re-checks both
+  against the database: unknown/deactivated user or a changed role → 401, sign in again.
+  **Permissions are never read from the token** — always from the database — so revoking
+  one is immediate. Verification pins the algorithm (rejects `alg=none`), audience, issuer,
+  and requires `role`.
+- `POST /api/auth/dev-token` mints tokens for seeded users and is **only mounted in dev/test**.
+- **Alternative rejected:** permissions inside the token (stateless) — revocation would wait
+  for expiry, unacceptable for `vpn:create` / `hr:confidential`.
 - **Production:** validate OIDC tokens from the corporate IdP; the issuer endpoint goes away.
 
 ### D-10 Provider abstraction and routing
@@ -101,6 +108,14 @@ decision → consequences.
   `ProviderRateLimited`, `ProviderAuthError`, `ProviderModelNotFound`, `ProviderBadRequest`,
   `ProviderResponseError`). The gateway decides retry/fallback from the error *type*, never
   from vendor-specific codes.
+- **Claude** via the official `anthropic` SDK (1.x) with SDK retries disabled
+  (`max_retries=0`) so the gateway is the single retry layer. SDK 1.x removed sampling
+  kwargs; `temperature` is sent via `extra_body` for models that accept it (Sonnet 4.5), and
+  the catalog flag `supports_temperature = false` strips it for models that reject it.
+  Server errors are classified **by status code**: in SDK 1.x, 503/504/529 are sibling
+  classes of `InternalServerError`, and a class-based mapping misrouted 529 "overloaded"
+  as a bad request (which would have disabled fallback exactly when it is needed) — caught
+  by a unit test. Disabled until `ANTHROPIC_API_KEY` is set.
 - Adapters: **NVIDIA NIM** via the OpenAI-compatible API (also covers vLLM/OpenAI), **Ollama
   via its native API** (NDJSON streaming, different usage fields — deliberately not the
   OpenAI shim, so the abstraction is exercised by two genuinely different wire formats), and
@@ -114,8 +129,20 @@ decision → consequences.
 - The mock provider is on in dev/test only; enabling it in prod fails config validation.
 - **Alternatives:** LiteLLM (broad provider coverage, but its retry/fallback semantics would
   be a black box we must defend in review, and mid-stream fallback/cancellation behaviour
-  would be theirs); Anthropic adapter (dropped: no API key available — adding it is one
-  class implementing the same protocol).
+  would be theirs).
+
+### D-16 Three-model picker and switching within a conversation
+- `selectable` in the catalog lists the models end users can choose:
+  `nim/gpt-oss-20b`, `claude/sonnet-4.5`, `ollama/llama3.2-3b`. Choosing one puts it first
+  and the other two follow as fallbacks, so a choice is honoured when possible and the
+  response says when it was not (`fallback_used`, per-attempt outcomes).
+- The choice is stored on the conversation. Sending `model` switches it; omitting it keeps
+  the current model; `PATCH /api/conversations/{id}` switches without a message. History
+  is model-independent, so the new model sees the whole conversation (Task 4 conversation
+  memory). Each assistant message records which model produced it.
+- Outside dev/test only picker models are accepted; routes and mock/demo models are
+  dev/test-only. A stored choice later removed from the catalog falls back to the default
+  instead of failing the next message.
 
 ### D-11 Retry, fallback and circuit-breaking rules
 | Error | Retry | Fallback | Trips breaker |

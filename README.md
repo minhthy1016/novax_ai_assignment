@@ -31,10 +31,14 @@ Expected:
 | Provider | Models | Needs |
 |---|---|---|
 | NVIDIA NIM (OpenAI-compatible) | `nim/gpt-oss-20b` (chat), `nim/nemotron-3-embed-1b` (2048-d) | `NVIDIA_API_KEY` in your shell or `.env` |
+| Anthropic (official SDK) | `claude/sonnet-4.5` (chat) | `ANTHROPIC_API_KEY`; shown unavailable until set |
 | Ollama (native API, local) | `ollama/llama3.2-3b` (chat), `ollama/nomic-embed-text` (768-d) | `ollama serve` + `ollama pull llama3.2:3b nomic-embed-text` |
 | Mock (dev/test only) | `mock/echo`, `mock/slow`, `mock/flaky`, `mock/down`, `mock/ratelimit`, `mock/embed` | nothing |
 
-Routes and fallback order live in [`config/models.toml`](config/models.toml). With no keys and
+**Model picker:** users choose one of three chat models — `nim/gpt-oss-20b` (default),
+`claude/sonnet-4.5`, `ollama/llama3.2-3b` — and can switch at any point in a conversation;
+the new model receives the full history. The chosen model goes first and the other two act
+as fallbacks. Routes and fallback order live in [`config/models.toml`](config/models.toml). With no keys and
 no Ollama, the stack still runs and every test passes on the mock provider.
 
 **Credentials policy:** keys are read from environment variables named in the catalog and
@@ -44,7 +48,8 @@ key is disabled and shown as unavailable in `GET /api/models`.
 ## API usage
 
 ```bash
-# 1. Get a token for a seeded user (dev/test only; stands in for the company IdP)
+# 1. Sign in first: every /api call needs a token bound to the user's ID and role
+#    (dev/test issuer; stands in for the company IdP). A role change invalidates it.
 TOKEN=$(curl -s -X POST localhost:8000/api/auth/dev-token \
   -H 'content-type: application/json' -d '{"user_id":"U001"}' | jq -r .access_token)
 AUTH="Authorization: Bearer $TOKEN"
@@ -52,6 +57,12 @@ AUTH="Authorization: Bearer $TOKEN"
 # 2. Chat (default route: NIM gpt-oss-20b, falls back to local Ollama)
 curl -s localhost:8000/api/chat -H "$AUTH" -H 'content-type: application/json' \
   -d '{"message":"What is a connection pool?"}' | jq '{content, model, fallback_used, usage}'
+
+# 2b. Switch model mid-conversation (history carries over), or without a message:
+curl -s localhost:8000/api/chat -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"message":"Now answer briefly","model":"ollama/llama3.2-3b","conversation_id":"<id>"}'
+curl -s -X PATCH localhost:8000/api/conversations/<id> -H "$AUTH" \
+  -H 'content-type: application/json' -d '{"model":"claude/sonnet-4.5"}'
 
 # 3. Stream (server-sent events: meta, model, delta..., done | error)
 curl -N localhost:8000/api/chat/stream -H "$AUTH" -H 'content-type: application/json' \
