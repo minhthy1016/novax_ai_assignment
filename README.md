@@ -4,9 +4,10 @@ An internal assistant that answers from approved company knowledge and executes 
 operational tools, with department isolation, explicit approval for sensitive actions,
 and an auditable trail for every decision.
 
-> **Build status (day 2 of 6):** foundation + **AI gateway** (Task 1): chat, streaming,
-> embeddings, model catalog, conversations; NVIDIA NIM + native Ollama + deterministic mock
-> adapters with retry, fallback, circuit breaking, cancellation and per-attempt usage.
+> **Build status (day 3 of 6):** AI gateway (Task 1) + **RAG knowledge system** (Task 2):
+> PDF/Markdown/text ingestion through a background worker, department isolation enforced in
+> SQL and by Postgres row-level security, hybrid retrieval, grounded answers with validated
+> citations, and abstention when approved knowledge has no answer.
 > See [`docs/traceability.md`](docs/traceability.md) for exactly what is done and how each
 > item is verified.
 
@@ -16,7 +17,10 @@ Prerequisites: Docker (with Compose v2), `make`. For running tests on the host: 
 
 ```bash
 cp .env.example .env        # development defaults; no API keys needed to start
+ollama pull nomic-embed-text llama3.2:3b   # local embeddings + local model
 make up                     # builds, migrates, seeds, waits until healthy
+make ingest                 # queue sample knowledge for the worker to index
+make jobs                   # ingestion status (succeeded / unchanged / failed / dead)
 curl -s localhost:8000/readyz
 ```
 
@@ -82,6 +86,25 @@ curl -s localhost:8000/api/conversations/<conversation_id> -H "$AUTH" | jq
 Errors share one envelope: `{"error": {"code", "message", "request_id"}, "attempts": [...]}`.
 Provider error text is never returned to the client; `attempts` shows model, outcome, error
 type and latency only.
+
+## Knowledge and retrieval
+
+- Put documents under `sample_data/knowledge/`: Markdown with front matter, or `.txt` /
+  `.pdf` with a `<file>.meta.json` sidecar (`document_id`, `title`, `department`,
+  `classification`: public | internal | confidential, `updated_at`). `make ingest` indexes new
+  and changed files; unchanged ones are skipped, changed ones replace the old version.
+- Every chat message is grounded: retrieval runs in the caller's access scope, and the
+  answer cites sources like `Production Deployment Procedure (KB-ENG-001 v1, ¶1–4)`. If
+  nothing relevant is found the assistant says so, without calling a model.
+- `POST /api/search` runs the same scoped retrieval and returns ranked chunks with scores.
+- Confidential documents go into a separate index and are answered by local models only.
+
+```bash
+curl -s localhost:8000/api/chat -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"message":"When may we deploy to production?"}' | jq '{content, citations, abstained}'
+curl -s localhost:8000/api/search -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"query":"payment incident root cause"}' | jq '.hits[] | {ref, similarity}'
+```
 
 ## Tests
 

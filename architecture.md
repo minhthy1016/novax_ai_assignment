@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: **day 2** (gateway, providers, conversations). Sections marked _TBD_ are filled as each component lands, so this
+> Status: **day 3** (gateway, providers, conversations, RAG knowledge system). Sections marked _TBD_ are filled as each component lands, so this
 > document only ever describes what the code actually does.
 
 ## 1. Request path
@@ -17,7 +17,7 @@ FastAPI ─ CorrelationMiddleware (request ID, JSON log line, HTTP metrics)
 AuthN → Principal{user, department, permissions}  (JWT; permissions loaded per request)
   ▼
 Orchestrator ─ decides: answer from knowledge | call a tool | refuse   [day 3-4]
-  ├─ Retrieval: filters by principal in SQL + Postgres RLS, then ranks  [day 3]
+  ├─ Retrieval: AccessScope -> SQL filter + Postgres RLS -> hybrid rank -> gate -> top-K
   ├─ Policy engine: authorizes each tool call against the principal     [day 4]
   ├─ Tools: typed schemas, pending-action approval for sensitive ones   [day 4]
   └─ Provider gateway: routing, retry, timeout, fallback, usage
@@ -37,7 +37,7 @@ engine before anything executes.
 | Relational store | PostgreSQL 17 | Users, conversations, usage, pending actions, audit |
 | Vector store | pgvector (same Postgres) | Chunk embeddings + department / classification / version metadata |
 | Cache, limits, queue | Redis 7 | Rate limits, cache, worker broker |
-| Worker | Dramatiq _(day 3)_ | Ingestion, re-indexing, eval jobs, dead-letter handling |
+| Worker | Dramatiq on Redis | Ingestion and re-indexing with retries and a dead-letter queue |
 | LLM providers | NVIDIA NIM (OpenAI-compatible), Claude (official Anthropic SDK), Ollama (native API), deterministic mock | Behind `ChatProvider` / `EmbeddingProvider` protocols |
 | Observability | structlog JSON, Prometheus, Opik (optional profile) | Logs, metrics, LLM traces and eval experiments |
 | Demo UI | Flowise (optional profile) | Thin client of `/api/chat` only — holds no policy or credentials |
@@ -181,9 +181,118 @@ decision → consequences.
   same traffic would cost on a paid endpoint).
 - Usage writes are shielded from cancellation and never fail the user's request.
 
+### D-15 Data-classification routing to providers
+- Every provider declares `data_egress`. When the retrieved context contains a
+  `confidential` chunk, the gateway call is made with `allow_egress = false`: hosted
+  providers (NIM, Claude) are skipped and reported as `skipped:egress_not_permitted`, so only
+  on-box models (Ollama) see confidential text. If none is available the request fails
+  (503) rather than leaking. Verified live: U004's compensation question was answered by
+  Ollama with NIM and Claude visibly skipped.
+- `internal` material may go to hosted providers (assumes a data-processing agreement);
+  tightening this is one flag per provider.
+
+### D-17 Least-privilege runtime database role (security finding)
+- **Finding:** the first RLS test showed an unscoped query returning *every* chunk,
+  including the confidential one. The app was connecting as the Postgres superuser the
+  container creates, and **superusers bypass row-level security even with FORCE**. The
+  storage-layer guard existed on paper only.
+- **Fix:** migration 0005 creates `opsassist_app` (LOGIN, NOSUPERUSER, NOBYPASSRLS, DML
+  only; users/departments read-only). API, worker and ingestion connect as it; only
+  migrations and seeding use the owner. A test asserts the runtime role is not a superuser
+  and cannot bypass RLS, and another runs an unfiltered query as that role.
+- Production: the password comes from `OPSASSIST_APP_DB_PASSWORD`; the dev default is
+  rejected outside dev/test. A further split (read-only API role vs. ingestion role) is
+  listed under future work.
+
+### D-20 Ingestion: parsing, metadata, chunking, embeddings
+- **Formats:** Markdown (front matter), plain text and PDF (`pypdf`, layout mode so paragraph
+  gaps survive extraction) with a `.meta.json` sidecar. Metadata is **mandatory and
+  validated**: a document without department and classification is rejected, never indexed
+  as "no ACL". Ingestion is confined to the knowledge root (no arbitrary file reads).
+- **Metadata schema:** `documents` = doc_key, version, title, department, classification,
+  status (active/superseded/deleted), content hash, embedding model, source path, MIME,
+  document date. Chunks denormalize department + classification (filtered in the same index
+  scan), plus locator, section, page, token count, embedding model, `is_active`.
+- **Chunking:** structure-aware (headings, list items, paragraphs never split unless
+  oversized), target ~64 tokens, max 160, one sentence of overlap only when an oversized
+  paragraph is split, title+section header prepended to the embedded text. At a 120-token
+  target every sample document collapsed into one chunk and citations could only say
+  "¶1–7"; at 64 the deploy window is cited as ¶1–4 and the injection text lands in its own
+  chunk. To be re-measured (64 vs 120 vs whole-doc) in the evaluation.
+- **Embedding model: `nomic-embed-text` via Ollama (768-d, local).** Documents never leave
+  the machine (required for confidential material, D-15), zero marginal cost, 768 dims fit
+  pgvector HNSW. NIM `nemotron-3-embed-1b` (2048-d) was rejected for the index: data egress,
+  and >2000 dims needs `halfvec`. The embedding model is recorded per chunk; changing it
+  forces a re-index instead of silently mixing vector spaces (D-12). CI uses a deterministic
+  768-d hashed mock with stopwords removed.
+- **Citations:** `KB-ENG-001@v1#¶1–4` is stable (doc key, version, locator); the label
+  shown to users is "Production Deployment Procedure (KB-ENG-001 v1, ¶1–4)". PDF locators
+  include pages ("p.1 ¶3").
+
+### D-21 Retrieval: hybrid search, fusion, relevance gate, top-K
+- Vector (HNSW, cosine) and full-text (tsvector, OR of terms) candidates, 20 each, fused
+  with Reciprocal Rank Fusion (k=60) - no score calibration between two scales needed.
+- **Admission is by semantic similarity**: ≥ the model's `min_relevance` AND within 0.10 of
+  the best hit. Full-text only affects ranking; letting it admit on its own let single
+  common words ("incident", "notes") pull in unrelated chunks.
+- **Calibration** (nomic, sample queries): correct top hits scored 0.65-0.79; irrelevant
+  hits for users without access scored 0.57-0.59. `min_relevance = 0.60`:
+
+  | Query (user) | Before gate | After gate |
+  |---|---|---|
+  | deploy window (U001) | ENG-001 ×2 + PUB 0.589 | ENG-001 ¶1–4, ¶5–7 |
+  | payment incident (U001) | ENG-002 ×2 + PUB 0.416 | ENG-002 ×2 |
+  | deploy window (U003, no eng access) | PUB 0.589, HR 0.569 | nothing → abstain |
+  | parental leave (U001) | nothing | nothing → abstain |
+  | compensation notes (U004) | HR-002 | HR-002 (confidential table) |
+
+- **Top-K = 4:** the corpus answers are 1-2 chunks; 4 leaves room for multi-part
+  questions (E12 used both incident chunks) within ~300 tokens of context.
+- **Reranking:** no cross-encoder. RRF fusion already reorders by two signals, the
+  candidate sets are tiny, and a reranker adds a model and latency to every request. At the
+  1M-document scale a cross-encoder over the top ~50 is proposed (§6); the eval will show
+  whether it pays for itself here.
+- **Nothing admitted → fixed abstention without calling any model** (cheapest possible
+  answer, and it cannot hallucinate).
+
+### D-22 Department isolation: application filter + row-level security
+- Access scope is computed from database permissions: `docs:<dept>` for internal,
+  `docs:<dept>` + `<dept>:confidential` for confidential, public for everyone.
+- Enforced twice in the same transaction: the SQL filter, and Postgres RLS policies driven
+  by `set_config('app.read_departments' | 'app.confidential_departments', ..., true)`.
+  Missing settings mean nothing is readable (fail closed). Writes require `app.ingest=on`.
+- **Confidential documents live in a separate table** (`confidential_chunks`) with their own
+  policy, never in the shared index - KB-HR-002 itself requires it. That table is not even
+  queried unless the scope includes a confidential department.
+- `documents` is under RLS too, so titles of unreadable documents cannot leak through joins.
+
+### D-23 Document lifecycle and re-indexing
+- A content hash over text + metadata makes ingestion idempotent ("unchanged").
+  Reclassifying a document changes the hash and re-indexes it into the right table.
+- New versions are swapped in atomically: supersede old → deactivate its chunks → insert new,
+  in one transaction under a per-document advisory lock. A partial unique index guarantees
+  at most one active version per document. Old versions stay (inactive) so past citations
+  still resolve. Deletion marks the document `deleted` and deactivates its chunks.
+
+### D-24 Ingestion worker, retries and dead-letter queue
+- Dramatiq on Redis with the AsyncIO middleware. Transient errors retry with exponential
+  backoff (1-30 s, 3 retries); permanent ones (parse error, missing metadata, policy
+  violation, path outside the root) fail immediately - retrying cannot fix them. Exhausted
+  messages go to Dramatiq's dead-letter queue and the job is marked `dead`. Every job and
+  attempt is visible in `ingestion_jobs` (`make jobs`).
+
+### D-25 Retrieved content is untrusted
+- Sources are placed in the user turn inside `<source>` elements with escaped content (a
+  document cannot close its element or forge a system block - unit-tested), and the system
+  prompt gives them no authority. Citation markers are validated against the sources that
+  were actually provided; invalid ones are stripped and counted. Full-width markers (`【2】`,
+  emitted by gpt-oss) are normalized.
+- Live check (E09): asked to follow KB-TEST-999's instructions, gpt-oss declined, explained
+  that document text is information rather than instructions, and summarized the legitimate
+  content with a citation. There are no tools in this mode, so nothing could be executed;
+  D4 adds tools behind an authorization layer the model cannot bypass.
+
 ### Pending decisions (filled on the day they are made)
-- D-15 data-classification routing: `confidential` context must only reach providers with
-  `data_egress = false` _(day 3, needs retrieval)_
 - D-20 chunking, embedding model, top-K, reranking — with measurements _(day 3)_
 - D-21 confidential-document partitioning _(day 3)_
 - D-30 server-status field-level policy (does ownership change access?) _(day 4)_
@@ -208,3 +317,11 @@ _Maintained continuously._
   flagged `tokens_estimated`.
 - Conversation history uses a simple recent-messages window within a token budget; summaries
   arrive with Task 4.
+- Retrieval uses the latest message only; follow-ups like "and on Thursday?" are not yet
+  rewritten into standalone queries (Task 4).
+- Prompt adherence varies run to run: in two live runs of E10, one answer opened with "No,"
+  despite the instruction to keep "not confirmed" wording. The evaluation measures this
+  over repeated runs rather than relying on single samples.
+- One runtime database role for API and worker; a read-only API role is future work.
+- The relevance threshold is calibrated on a small query set; it is re-measured in the
+  evaluation (false abstentions vs. irrelevant context).
