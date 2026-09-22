@@ -50,14 +50,9 @@ class IngestResult:
 
 def chunking_config(settings: Settings) -> ChunkingConfig:
     return ChunkingConfig(
-        strategy=settings.chunking_strategy,
         target_tokens=settings.chunk_target_tokens,
         max_tokens=settings.chunk_max_tokens,
     )
-
-
-def chunker_id(cfg: ChunkingConfig) -> str:
-    return f"{cfg.strategy}:{cfg.target_tokens}/{cfg.max_tokens}/{cfg.split_tokens}"
 
 
 def content_hash(doc: ParsedDocument, chunker: str = "") -> str:
@@ -118,7 +113,7 @@ async def ingest_file(
             f"{meta.document_id} is confidential and {model_id} sends data off-box"
         )
     cfg = chunking_config(settings)
-    digest = content_hash(doc, chunker_id(cfg))
+    digest = content_hash(doc, cfg.chunker_id)
 
     async with factory() as session, session.begin():
         await enable_ingest(session)
@@ -187,7 +182,7 @@ async def ingest_file(
             content_sha256=digest,
             doc_updated_at=meta.updated_at,
             embedding_model=model_id,
-            chunker=chunker_id(cfg),
+            chunker=cfg.chunker_id,
             chunk_count=len(chunks),
         )
         session.add(new_doc)

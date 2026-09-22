@@ -239,6 +239,9 @@ decision → consequences.
   more as documents get longer. Caveat: 34 cases - one case moves a metric by ~0.03; the gap
   to the first version is consistent in both vector-only and hybrid modes, the gap between
   the top strategies is not significant.
+- Production code contains only parent-child (`knowledge/chunking.py`); the strategies it was
+  measured against live in `evaluation/chunkers.py` and reuse the same building blocks, so
+  the comparison differs only in the strategy.
 - **Docling** was evaluated as a reference (HybridChunker with a tiktoken tokenizer, run in a
   separate environment), not adopted as a dependency: on these documents it did not beat the
   in-house hierarchical chunker, and it brings PyTorch and layout models into the image. For
@@ -318,8 +321,14 @@ decision → consequences.
   D4 adds tools behind an authorization layer the model cannot bypass.
 
 ### Pending decisions (filled on the day they are made)
-- D-20 chunking, embedding model, top-K, reranking — with measurements _(day 3)_
-- D-21 confidential-document partitioning _(day 3)_
+- D-26 **Agent orchestration on LangGraph** _(day 4, decided in principle)_. The VPN flow is
+  "propose → wait for a different person's approval → resume → execute exactly once", which
+  maps directly onto LangGraph's `interrupt()` + a Postgres checkpointer (durable, resumable
+  across restarts). Boundaries that stay **outside** the graph, in plain tested code:
+  authorization (policy engine), typed tool schemas, the pending-action store with action
+  hashes, idempotency, and the hash-chained audit log. The graph decides *what to do next*;
+  it never decides *whether it is allowed*. Alternative kept in mind: a hand-written state
+  machine (fewer dependencies, full control) - to be compared in the decision record.
 - D-30 server-status field-level policy (does ownership change access?) _(day 4)_
 - D-31 pending-action approval model and action hashing _(day 4)_
 - D-32 tamper-aware audit design _(day 4)_

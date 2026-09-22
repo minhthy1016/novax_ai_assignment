@@ -17,7 +17,7 @@ Two retrieval modes: vector-only, and hybrid (vector + BM25 fused with RRF, k=60
 mirrors production.
 
 Usage:
-    python evaluation/chunking_eval.py [--docling evaluation/runs/docling_chunks.json]
+    python -m evaluation.chunking_eval [--docling evaluation/runs/docling_chunks.json]
 """
 
 from __future__ import annotations
@@ -29,13 +29,15 @@ import math
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
+from evaluation import chunkers
 from opsassist.auth import Principal
-from opsassist.knowledge.chunking import ChunkingConfig, chunk_document
+from opsassist.knowledge.chunking import Chunk, ChunkingConfig, chunk_document
 from opsassist.knowledge.parsing import DocumentMeta, ParsedDocument, parse_file
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import estimate_tokens
@@ -59,12 +61,10 @@ class EvalChunk:
 # ------------------------------------------------------------------ strategies
 
 
-def _ours(docs: list[ParsedDocument], cfg: ChunkingConfig) -> list[EvalChunk]:
-    return [
-        EvalChunk(d.meta.document_id, c.embed_text, c.context)
-        for d in docs
-        for c in chunk_document(d, cfg)
-    ]
+def _ours(
+    docs: list[ParsedDocument], chunk: Callable[[ParsedDocument], list[Chunk]]
+) -> list[EvalChunk]:
+    return [EvalChunk(d.meta.document_id, c.embed_text, c.context) for d in docs for c in chunk(d)]
 
 
 def _fixed_window(docs: list[ParsedDocument], size: int, overlap: int) -> list[EvalChunk]:
@@ -256,15 +256,15 @@ def main() -> None:
             assert _norm(e) in by_key[c["expected_doc"]], f"{c['id']}: evidence not in doc: {e}"
 
     strategies: dict[str, list[EvalChunk]] = {
-        "structural-64 (day-3 baseline)": _ours(
-            docs, ChunkingConfig("structural", target_tokens=64)
-        ),
-        "structural-128": _ours(docs, ChunkingConfig("structural", target_tokens=128)),
+        "structural-64 (day-3 baseline)": _ours(docs, lambda d: chunkers.structural(d, 64)),
+        "structural-128": _ours(docs, lambda d: chunkers.structural(d, 128)),
         "fixed-window-128/32": _fixed_window(docs, 128, 32),
         "per-page / whole-doc": _per_page(docs),
-        "hierarchical-128": _ours(docs, ChunkingConfig("hierarchical", max_tokens=128)),
-        "hierarchical-256": _ours(docs, ChunkingConfig("hierarchical", max_tokens=256)),
-        "parent-child-64/256": _ours(docs, ChunkingConfig("parent_child", 64, 256)),
+        "hierarchical-128": _ours(docs, lambda d: chunkers.hierarchical(d, 128)),
+        "hierarchical-256": _ours(docs, lambda d: chunkers.hierarchical(d, 256)),
+        "parent-child-64/256 (production)": _ours(
+            docs, lambda d: chunk_document(d, ChunkingConfig(64, 256))
+        ),
     }
     if args.docling.exists():
         strategies["docling-hybrid-256"] = _docling(args.docling)
