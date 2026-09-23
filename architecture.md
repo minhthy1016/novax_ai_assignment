@@ -133,6 +133,7 @@ reasoning stays available.
 | [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
 | [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, fail open | Operations |
 | [D-62](docs/decisions/D-62-console-ui-is-a-client.md) | The console is a client, dev/test only | Scope |
+| [D-63](docs/decisions/D-63-tickets-are-operational-data.md) | Tickets are operational data, read by a tool | Agent |
 
 ### Confirmed with the team lead (2026-09-23)
 | Question | Answer | Effect on the build |

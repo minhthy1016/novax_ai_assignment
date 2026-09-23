@@ -40,6 +40,10 @@ class CreateSupportTicketArgs(ToolArgs):
     details: str = Field(min_length=4, max_length=4000)
 
 
+class GetSupportTicketArgs(ToolArgs):
+    ticket_id: str = Field(pattern=r"^INC-[0-9]{1,10}$")
+
+
 class CreateVpnProfileArgs(ToolArgs):
     """Either the employee id or their name; the server resolves names, the model never
     invents an id."""
@@ -88,6 +92,16 @@ TOOLS: dict[str, ToolSpec] = {
         name="create_support_ticket",
         description="Open a support ticket with a title, severity and details.",
         args_model=CreateSupportTicketArgs,
+        requires_permission="ticket:create",
+    ),
+    "get_support_ticket": ToolSpec(
+        name="get_support_ticket",
+        description=(
+            "Read one support ticket by its id (for example INC-1042): title, severity, "
+            "status and the details it was raised with. Use this whenever the user names a "
+            "ticket id - a ticket is operational data and is never in the documents."
+        ),
+        args_model=GetSupportTicketArgs,
         requires_permission="ticket:create",
     ),
     "create_vpn_profile": ToolSpec(

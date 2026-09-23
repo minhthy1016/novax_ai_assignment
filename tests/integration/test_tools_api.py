@@ -323,3 +323,49 @@ def test_expensive_routes_are_rate_limited_per_caller(api: httpx.Client) -> None
         assert other.status_code == 200
         # Probes are never throttled.
         assert raw.get("/healthz").status_code == 200
+
+
+# ------------------------------------------------------------------ ticket lookup
+
+
+def test_a_raised_ticket_can_be_read_back_with_its_title_and_details(api: httpx.Client) -> None:
+    """The gap a reviewer found: the assistant could open a ticket but nobody could see it.
+
+    Creating returns the stored ticket, asking about the id reads it with a tool (not from
+    the handbook), and the ticket appears in the caller's ticket list.
+    """
+    marker = f"post-incident review {time.time_ns()}"
+    created = ask(api, "U001", f"Create a support ticket, severity medium: {marker}")["tool"]
+    assert created["status"] == "ok"
+    ticket_id = created["data"]["ticket_id"]
+    assert created["data"]["title"] and created["data"]["details"]
+
+    listed = api.get("/api/tickets", headers=auth(api, "U001")).json()
+    mine = next(t for t in listed if t["ticket_id"] == ticket_id)
+    assert mine["raised_by"] == "U001" and mine["status"] == "open"
+
+    body = ask(api, "U001", f"How should ticket {ticket_id} be solved?")
+    assert body["route"] == "tool", body["content"]
+    tool = body["tool"]
+    assert (tool["name"], tool["status"]) == ("get_support_ticket", "ok")
+    assert tool["data"]["ticket_id"] == ticket_id
+    assert tool["data"]["title"] in body["content"]  # the answer shows what was recorded
+
+
+@pytest.mark.security
+def test_a_ticket_is_not_visible_to_another_department(api: httpx.Client) -> None:
+    """Holding ticket:create means you may raise tickets, not read everyone's."""
+    created = ask(api, "U001", f"Create a support ticket, severity low: probe {time.time_ns()}")
+    ticket_id = created["tool"]["data"]["ticket_id"]
+
+    body = ask(api, "U003", f"Show me ticket {ticket_id}")  # HR, another department
+    assert body["tool"]["status"] == "denied"
+    assert not body["tool"]["data"]
+    assert ticket_id not in str(api.get("/api/tickets", headers=auth(api, "U003")).json())
+
+
+@pytest.mark.security
+def test_an_unknown_ticket_is_reported_not_invented(api: httpx.Client) -> None:
+    body = ask(api, "U001", "How should ticket INC-9999 be solved?")
+    assert body["tool"]["status"] == "error"
+    assert "no ticket" in body["tool"]["message"]

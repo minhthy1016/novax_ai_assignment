@@ -15,7 +15,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from opsassist import __version__
 from opsassist.agent.checkpointer import psycopg_url
 from opsassist.agent.graph import AgentDeps, build_graph
-from opsassist.api import actions, audit, chat, documents, health, knowledge, memory, models, ui
+from opsassist.api import (
+    actions,
+    audit,
+    chat,
+    documents,
+    health,
+    knowledge,
+    memory,
+    models,
+    tickets,
+    ui,
+)
 from opsassist.api import auth as auth_api
 from opsassist.api.common import request_id_of
 from opsassist.config import Settings, get_settings
@@ -92,6 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(audit.router)
     app.include_router(memory.router)
     app.include_router(documents.router)
+    app.include_router(tickets.router)
     if settings.env in ("dev", "test"):
         # The dev token issuer and the console that uses it live and die together.
         app.include_router(auth_api.router)

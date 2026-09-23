@@ -43,6 +43,7 @@ def test_every_tool_declares_its_permission_and_schema() -> None:
         "search_internal_docs",
         "get_server_status",
         "create_support_ticket",
+        "get_support_ticket",  # reading back what create_support_ticket wrote
         "create_vpn_profile",
     }
     assert TOOLS["create_vpn_profile"].sensitive
@@ -340,3 +341,38 @@ def test_context_classification_is_the_most_sensitive_chunk() -> None:
     assert result("public", "internal").max_classification == "internal"
     assert result("public", "confidential", "internal").max_classification == "confidential"
     assert result().max_classification is None
+
+
+# ------------------------------------------------------------------ ticket lookup
+
+
+def test_ticket_id_is_validated_before_any_lookup() -> None:
+    """A ticket id is a fixed shape, so a model cannot turn it into a wildcard or a path."""
+    from opsassist.tools.registry import GetSupportTicketArgs
+
+    assert GetSupportTicketArgs(ticket_id="INC-1051").ticket_id == "INC-1051"
+    for bad in ("INC-", "inc-1051", "INC-1051 OR 1=1", "../INC-1", "INC-99999999999"):
+        with pytest.raises(ValidationError):
+            GetSupportTicketArgs(ticket_id=bad)
+
+
+def test_the_ticket_tool_is_offered_to_the_model_with_its_purpose() -> None:
+    """The router can only choose a tool it has been told about, and the description is what
+    stops 'how do I solve INC-1051' being answered from the handbook."""
+    described = {t["name"]: t for t in describe_for_model()}
+    assert "get_support_ticket" in described
+    assert "never in the documents" in described["get_support_ticket"]["description"]
+
+
+def test_a_ticket_keeps_the_requesters_own_words() -> None:
+    """The model writes the details; the person's actual request is kept beside them, so a
+    fleshed-out summary can always be compared with what was asked."""
+    from opsassist.tools.executor import with_provenance
+
+    asked = "create a new ticket for Post-incident review"
+    written = "The payment API was down for hours, causing significant customer disruption."
+    stored = with_provenance(written, asked)
+    assert written in stored and asked in stored
+    # No duplication when the model simply echoed the request.
+    assert with_provenance(f"{asked} please", asked) == f"{asked} please"
+    assert with_provenance(written, None) == written

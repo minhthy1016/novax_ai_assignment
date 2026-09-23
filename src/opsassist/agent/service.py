@@ -156,13 +156,26 @@ def describe_tool_result(tool: str, data: dict[str, Any]) -> str:
                 parts.append(str(data.get("utilisation", "")))
             return " ".join(p for p in parts if p)
         case "create_support_ticket":
+            title = data.get("title")
+            named = f' "{title}"' if title else ""
             if data.get("duplicate"):
                 return (
-                    f"Ticket {data.get('ticket_id')} already covers this; it was not created twice."
+                    f"Ticket {data.get('ticket_id')}{named} already covers this; "
+                    "it was not created twice."
                 )
             severity = data.get("severity")
             suffix = f" with severity {severity}" if severity else ""
-            return f"Ticket {data.get('ticket_id')} is open{suffix}."
+            lines = [f"Ticket {data.get('ticket_id')}{named} is open{suffix}."]
+            if details := data.get("details"):
+                lines.append(f"Details as recorded: {details}")
+            return " ".join(lines)
+        case "get_support_ticket":
+            return (
+                f"{data.get('ticket_id')} \u2014 {data.get('title')} "
+                f"({data.get('severity')}, {data.get('status')}), raised by "
+                f"{data.get('raised_by')} on {str(data.get('raised_at'))[:10]}.\n"
+                f"Details as recorded: {data.get('details')}"
+            )
         case "create_vpn_profile":
             return (
                 f"VPN profile {data.get('profile_id')} created for {data.get('employee_id')}, "

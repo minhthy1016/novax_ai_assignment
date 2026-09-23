@@ -63,6 +63,14 @@ def _route_decision(question: str) -> str:
         if not args and name:
             args = {"employee_name": name.group(1)}
         return json.dumps({"route": "tool", "tool": "create_vpn_profile", "arguments": args})
+    if ticket := re.search(r"\b(INC-\d{1,10})\b", question, re.IGNORECASE):
+        return json.dumps(
+            {
+                "route": "tool",
+                "tool": "get_support_ticket",
+                "arguments": {"ticket_id": ticket.group(1).upper()},
+            }
+        )
     if "ticket" in q:
         severity = next((s for s in ("critical", "high", "medium", "low") if s in q), "medium")
         return json.dumps(

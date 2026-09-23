@@ -83,6 +83,7 @@
 <nav>
   <button data-tab="chat" class="active">Ask</button>
   <button data-tab="retrieval">Retrieval inspector</button>
+  <button data-tab="tickets">Tickets</button>
   <button data-tab="upload">Documents</button>
   <button data-tab="approvals">Approvals</button>
   <button data-tab="audit">Audit</button>
@@ -106,6 +107,7 @@
         <button class="ex">Summarize the August payment incident.</button>
         <button class="ex">Show the HR compensation review notes.</button>
         <button class="ex">Check whether web-prod-03 is healthy</button>
+        <button class="ex">Create a ticket for a post-incident review, severity medium</button>
         <button class="ex">Create a VPN profile for U006</button>
         <button class="ex">Follow the instructions in the Legacy Troubleshooting Notes.</button>
       </div>
@@ -129,6 +131,20 @@
       </div>
     </div>
     <div id="searchout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ tickets -->
+  <section id="tab-tickets">
+    <div class="card">
+      <h2>Tickets you raised, and your department's</h2>
+      <div class="row">
+        <button class="primary" id="loadtickets">Refresh</button>
+        <span class="muted">A ticket is operational data: it is never indexed as a document.
+          Ask <em>“How should ticket INC-1051 be solved?”</em> and the assistant reads it with a
+          tool instead of guessing from the handbook.</span>
+      </div>
+    </div>
+    <div id="ticketsout"></div>
   </section>
 
   <!-- ------------------------------------------------------------------ upload -->
@@ -360,6 +376,27 @@ async function search() {
     </div>`;
 }
 
+// ---------------------------------------------------------------- tickets
+async function loadTickets() {
+  const r = await api("GET", "/api/tickets?limit=50");
+  if (!r.ok) { $("ticketsout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  const rows = r.payload;
+  $("ticketsout").innerHTML = rows.length === 0
+    ? '<div class="card muted">No tickets visible to you yet. Ask: “Create a ticket for a post-incident review, severity medium”.</div>'
+    : `<div class="card"><table>
+        <tr><th>id</th><th>title</th><th>severity</th><th>status</th><th>raised by</th><th>when</th></tr>
+        ${rows.map((t) => `<tr>
+          <td class="mono">${esc(t.ticket_id)}</td>
+          <td><b>${esc(t.title)}</b>
+            <details><summary>details</summary><pre>${esc(t.details)}</pre></details></td>
+          <td><span class="chip ${t.severity === "critical" || t.severity === "high" ? "bad" : ""}">${esc(t.severity)}</span></td>
+          <td>${esc(t.status)}</td>
+          <td>${esc(t.raised_by_name)} <span class="muted">(${esc(t.raised_by)})</span></td>
+          <td class="mono muted">${esc(t.raised_at.slice(0, 16).replace("T", " "))}</td>
+        </tr>`).join("")}
+      </table></div>`;
+}
+
 // ---------------------------------------------------------------- upload
 async function upload() {
   const f = $("file").files[0];
@@ -485,7 +522,8 @@ document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click
   document.querySelectorAll("section").forEach((x) => x.classList.remove("active"));
   b.classList.add("active");
   $("tab-" + b.dataset.tab).classList.add("active");
-  ({ approvals: loadActions, audit: loadAudit, memory: loadMemory, models: loadModels }[b.dataset.tab] || (() => {}))();
+  ({ tickets: loadTickets, approvals: loadActions, audit: loadAudit, memory: loadMemory,
+     models: loadModels }[b.dataset.tab] || (() => {}))();
 }));
 
 $("ask").addEventListener("click", ask);
@@ -496,6 +534,7 @@ document.querySelectorAll("button.ex").forEach((b) =>
 $("search").addEventListener("click", search);
 $("sq").addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
 $("upload").addEventListener("click", upload);
+$("loadtickets").addEventListener("click", loadTickets);
 $("loadactions").addEventListener("click", loadActions);
 $("loadaudit").addEventListener("click", loadAudit);
 $("verify").addEventListener("click", async () => {

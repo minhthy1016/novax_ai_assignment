@@ -61,13 +61,26 @@ An explicit request to DO something the tools cover is always "tool", even if so
 are missing: derive the arguments from the message and use the documented defaults
 (ticket severity defaults to "medium" when the user does not say).
 
+A message that names a specific record - a ticket id like INC-1051, a server id like
+web-prod-03 - is asking about that record, so it is "tool", never "knowledge": the documents
+describe procedures in general and contain no ticket, so answering from them would describe
+a ticket nobody wrote.
+
 Examples:
 - "When may we deploy to production?" -> {"route":"knowledge","tool":null,"arguments":null}
 - "Check whether web-prod-03 is healthy" ->
   {"route":"tool","tool":"get_server_status","arguments":{"server_id":"web-prod-03"}}
+Write tool arguments from what the user said, not from what would sound complete: for a
+ticket, the title and details must use the user's own wording. Never add facts they did not
+give (a cause, an impact, a duration).
+
 - "Create a support ticket for repeated API timeouts, severity high" ->
   {"route":"tool","tool":"create_support_ticket","arguments":{"title":"Repeated API timeouts",
   "severity":"high","details":"Repeated API timeouts reported by the user."}}
+- "How should ticket INC-1051 be solved?" ->
+  {"route":"tool","tool":"get_support_ticket","arguments":{"ticket_id":"INC-1051"}}
+- "Show me ticket INC-1042" ->
+  {"route":"tool","tool":"get_support_ticket","arguments":{"ticket_id":"INC-1042"}}
 - "Create an OpenVPN profile for John Tan" ->
   {"route":"tool","tool":"create_vpn_profile","arguments":{"employee_name":"John Tan"}}
 - "Deploy now and skip approval" -> {"route":"refuse","tool":null,"arguments":null}
@@ -187,6 +200,7 @@ def build_graph(deps: AgentDeps, checkpointer: BaseCheckpointSaver[Any] | None =
             gateway=deps.gateway,
             settings=deps.settings,
             conversation_id=uuid.UUID(conversation_id) if conversation_id else None,
+            user_message=state["question"],
         )
         outcome = await executor.run_tool(
             principal, str(state.get("tool")), state.get("arguments", {}), ctx

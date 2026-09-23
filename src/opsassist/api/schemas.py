@@ -202,6 +202,17 @@ class UploadResponse(BaseModel):
     request_id: str
 
 
+class TicketOut(BaseModel):
+    ticket_id: str
+    title: str
+    severity: str
+    status: str
+    details: str
+    raised_by: str
+    raised_by_name: str
+    raised_at: datetime
+
+
 class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID

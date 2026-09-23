@@ -186,7 +186,7 @@ Each principle is implemented by specific decisions, recorded with their alterna
 ## Security and data boundaries
 
 The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
-Run them all with `make test-security` (97 tests).
+Run them all with `make test-security` (102 tests).
 
 **Identity.** A bearer token names the user *and their role*; both are re-checked against the
 database on every request, so a role change or a deactivated account is refused immediately.
@@ -407,6 +407,7 @@ with. Everything it appears to demonstrate is enforced by the API.
 |---|---|
 | **Ask** | The answer with its citations (click one to see the quoted passage), the route the agent took, the model used, fallback attempts, tokens, cost, latency and the retrieval counters behind that answer |
 | **Retrieval inspector** | `POST /api/search` for the signed-in caller: rank, vector similarity, full-text rank, fused score, and *the matched passage next to the whole section the model receives* — the parent-child split, visible |
+| **Tickets** | Tickets you raised and your department's — a ticket is operational data, read by a tool and never indexed as a document ([D-63](docs/decisions/D-63-tickets-are-operational-data.md)) |
 | **Documents** | Upload a file and watch the worker index it; the server decides department and classification, not the file |
 | **Approvals** | Pending sensitive actions, with **Approve**, **Reject** and a deliberate *approve with a wrong hash* button to watch the check refuse it |
 | **Audit** | The hash-chained trail for this caller, and `verify` for the whole chain |
@@ -551,7 +552,7 @@ make install            # local venv via uv
 make lint               # ruff + mypy (strict)
 make test               # unit tests (149), no services needed
 make test-integration   # integration tests (59) against the running stack
-make test-security      # security tests (97): authz, isolation, injection, audit, egress
+make test-security      # security tests (102): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```

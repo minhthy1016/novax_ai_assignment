@@ -39,7 +39,7 @@ alternatives and the measurement behind each choice are written down.
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
 | T3.1 | Orchestration decides when a tool is required | `agent/graph.py` (LangGraph: small_talk / knowledge / tool / refuse), router output validated before it can act | `test_router_output_is_validated_before_it_can_act`, `test_e06_…`, `test_e11_no_deployment_tool_exists`, `test_greeting_costs_no_model_call` | ✅ |
-| T3.2 | ≥3 tools incl. one sensitive | `tools/registry.py`: search_internal_docs, get_server_status, create_support_ticket, create_vpn_profile (sensitive) | `test_every_tool_declares_its_permission_and_schema` | ✅ |
+| T3.2 | ≥3 tools incl. one sensitive | `tools/registry.py`: search_internal_docs, get_server_status, create_support_ticket, get_support_ticket, create_vpn_profile (sensitive) | `test_every_tool_declares_its_permission_and_schema`, `test_a_raised_ticket_can_be_read_back_with_its_title_and_details` | ✅ |
 | T3.3 | Typed input schemas | Pydantic models with `extra="forbid"`; names resolved server-side | `test_invalid_tool_arguments_are_rejected`, `test_vpn_arguments_need_exactly_one_subject_and_a_bounded_duration` | ✅ |
 | T3.4 | Authorization before execution | `tools/executor.py::authorize` against DB permissions; field-level policy for server status (D-30) | `test_authorization_is_checked_against_permissions`, `test_e07_tool_is_denied_without_the_permission`, `test_utilisation_is_only_visible_to_the_owner_and_it_ops` | ✅ |
 | T3.5 | Explicit, resumable confirmation for sensitive actions | pending action + action hash; approver must differ and hold `vpn:approve`; LangGraph `interrupt()` resumes the conversation | `test_e08_vpn_needs_a_different_authorized_approver`, `test_requester_cannot_approve_their_own_action`, `test_injection_cannot_skip_the_approval_step` | ✅ |
@@ -75,7 +75,7 @@ alternatives and the measurement behind each choice are written down.
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |
 | T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input; **per-caller token buckets in Redis** with a tighter budget for model-backed routes (D-61) | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input`, `tests/unit/test_ratelimit.py` (6), `test_expensive_routes_are_rate_limited_per_caller` (real Redis: 429 + `Retry-After`, per-caller isolation, probes unaffected) | ✅ |
 | T6.6 | Tamper-aware audit + redaction | hash-chained `audit_log`, append-only for the runtime role, redacted arguments/results (D-32); tracebacks no longer log local variables | `test_audit_records_decisions_and_detects_tampering`, `test_runtime_role_cannot_rewrite_the_audit_log`, `test_audit_redacts_secret_like_values` | ✅ |
-| T6.7 | Tests: indirect injection, cross-department leakage | 97 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
+| T6.7 | Tests: indirect injection, cross-department leakage | 102 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
 
 ## Task 7 - Deployment
 | ID | Requirement | Implementation | Evidence | Status |

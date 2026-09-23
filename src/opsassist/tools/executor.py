@@ -51,6 +51,10 @@ class ToolContext:
     gateway: LLMGateway
     settings: Settings
     conversation_id: uuid.UUID | None = None
+    # What the person actually typed. A tool that records free text (a ticket) stores it
+    # verbatim next to the model's wording, so nobody has to trust that the summary is
+    # faithful - the request is right there to compare against.
+    user_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,20 @@ async def _get_server_status(
     return visible_server_fields(principal, server)
 
 
+def with_provenance(details: str, request: str | None) -> str:
+    """Keep the requester's own words with the ticket.
+
+    The model writes `details` from the conversation, and it will happily flesh out a
+    one-line request into a paragraph that reads like fact. The person who works the ticket
+    must be able to see what was actually asked, so the verbatim request is appended and
+    never replaced by a summary.
+    """
+    request = (request or "").strip()
+    if not request or request.lower() in details.lower():
+        return details
+    return f'{details}\n\nRaised from: "{request}"'
+
+
 async def _create_support_ticket(
     session: AsyncSession, principal: Principal, args: Any, ctx: ToolContext
 ) -> dict[str, Any]:
@@ -145,13 +163,50 @@ async def _create_support_ticket(
         id=f"INC-{number}",
         title=args.title,
         severity=args.severity,
-        details=args.details,
+        details=with_provenance(args.details, ctx.user_message),
         created_by=principal.user_id,
         idempotency_key=key,
     )
     session.add(ticket)
     await session.flush()
-    return {"ticket_id": ticket.id, "status": ticket.status, "severity": ticket.severity}
+    # Echo back what was actually stored, not what was asked for: the caller (and the
+    # console) should see the ticket as it exists, including the title it can be found by.
+    return {
+        "ticket_id": ticket.id,
+        "title": ticket.title,
+        "severity": ticket.severity,
+        "status": ticket.status,
+        "details": ticket.details,
+    }
+
+
+async def _get_support_ticket(
+    session: AsyncSession, principal: Principal, args: Any, ctx: ToolContext
+) -> dict[str, Any]:
+    """Read one ticket.
+
+    Visibility is a record-level rule, so it cannot live in the permission check: holding
+    `ticket:create` says you may raise tickets, not that you may read everyone's. A ticket is
+    visible to the person who raised it and to their department - the people who would work
+    it - and to nobody else.
+    """
+    ticket = await session.get(Ticket, args.ticket_id)
+    if ticket is None:
+        raise ToolError(f"no ticket with id {args.ticket_id!r}")
+    raiser = await session.get(User, ticket.created_by)
+    own = ticket.created_by == principal.user_id
+    same_team = raiser is not None and raiser.department == principal.department
+    if not (own or same_team):
+        raise ToolDenied(f"{args.ticket_id} belongs to another department")
+    return {
+        "ticket_id": ticket.id,
+        "title": ticket.title,
+        "severity": ticket.severity,
+        "status": ticket.status,
+        "details": ticket.details,
+        "raised_by": ticket.created_by,
+        "raised_at": ticket.created_at.isoformat(),
+    }
 
 
 async def resolve_employee(session: AsyncSession, args: Any) -> User:
@@ -200,10 +255,16 @@ class ToolError(RuntimeError):
     """The tool could not do its job (bad id, missing record). Never a policy failure."""
 
 
+class ToolDenied(RuntimeError):
+    """A record-level policy refusal from inside a handler: the caller holds the permission
+    but not for *this* record. Audited as a denial, like any other refusal."""
+
+
 HANDLERS = {
     "search_internal_docs": _search_internal_docs,
     "get_server_status": _get_server_status,
     "create_support_ticket": _create_support_ticket,
+    "get_support_ticket": _get_support_ticket,
     "create_vpn_profile": _create_vpn_profile,
 }
 
@@ -294,6 +355,12 @@ async def run_tool(
 
         try:
             result = await HANDLERS[tool](session, principal, args, ctx)
+        except ToolDenied as exc:
+            await audit.append(
+                session, entry(decision="deny", arguments=validated, reason=str(exc))
+            )
+            log.info("tool_denied", tool=tool, user=principal.user_id, reason=str(exc))
+            return ToolOutcome("denied", tool, f"You are not authorized: {exc}.")
         except ToolError as exc:
             await audit.append(
                 session, entry(decision="error", arguments=validated, reason=str(exc))
