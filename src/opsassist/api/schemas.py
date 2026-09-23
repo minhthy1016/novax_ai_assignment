@@ -222,6 +222,8 @@ class ChatResponse(BaseModel):
     citations: list[CitationOut]
     grounded: bool
     abstained: bool
+    # Citations moved to the retrieved source that states the sentence's figures (rag.py).
+    repointed_citations: int = 0
     # None when no model was called (nothing relevant was retrieved -> abstention).
     model: ModelRef | None
     model_route: str | None

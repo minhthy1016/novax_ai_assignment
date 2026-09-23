@@ -311,6 +311,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         citations=_citations_out(answer),
         grounded=answer.grounded,
         abstained=answer.abstained,
+        repointed_citations=answer.repointed_citations,
         model=ModelRef(id=result.model_id, provider=result.provider or "")
         if result.model_id
         else None,
@@ -545,6 +546,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                                     "grounded": answer.grounded,
                                     "abstained": answer.abstained,
                                     "invalid_citations": answer.invalid_citations,
+                                    "repointed_citations": answer.repointed_citations,
                                     "finish_reason": event.finish_reason,
                                     "usage": usage_out(event.usage, event.cost_usd).model_dump(
                                         mode="json"

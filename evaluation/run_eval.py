@@ -69,6 +69,7 @@ class CaseResult:
     route: str = ""
     answer: str = ""
     error: str | None = None
+    repointed_citations: int = 0  # corrected by the backend before the answer was returned
 
     @property
     def passed(self) -> bool:
@@ -204,6 +205,7 @@ def run_case(
     result.route = str(body.get("route"))
     result.answer = str(body.get("content", ""))
     usage = body.get("usage") or {}
+    result.repointed_citations = int(body.get("repointed_citations") or 0)
     result.prompt_tokens = int(usage.get("prompt_tokens", 0))
     result.completion_tokens = int(usage.get("completion_tokens", 0))
     result.cost_usd = float(usage.get("cost_usd", 0) or 0)
@@ -382,6 +384,9 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         f"| Judge: facts contradicted | {contradicted} |",
         f"| Judge: unsupported claims found | {len(unsupported)} |",
         f"| Judge verdicts discarded (could not quote the answer) | {unverified} |",
+        f"| Citations re-pointed by the backend (answers · sources) | "
+        f"{sum(r.repointed_citations > 0 for r in results)} · "
+        f"{sum(r.repointed_citations for r in results)} |",
         "",
         "## Cost and latency",
         "",

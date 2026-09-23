@@ -8,6 +8,9 @@ Retrieved text is untrusted data (indirect prompt injection, Task 6). Defenses h
   there is nothing to act with (tools, when added, are authorized outside the model).
 * Citations are validated against what was actually retrieved: a marker pointing at a
   source that was not provided is removed and counted, never rendered as a citation.
+* A citation whose source does not contain the figures its sentence states is re-pointed to
+  the retrieved source that does (``repoint_citations``) - a small model otherwise credits a
+  fact to a neighbouring source that merely shares its vocabulary.
 * Nothing retrieved -> a fixed abstention without calling the model at all.
 """
 
@@ -75,6 +78,7 @@ class GroundedAnswer:
     citations: list[Citation]
     abstained: bool
     invalid_citations: int
+    repointed_citations: int = 0
 
     @property
     def grounded(self) -> bool:
@@ -127,12 +131,93 @@ def normalize_markers(answer: str, sources: int) -> str:
     return _PROSE_MARKER.sub(prose, answer)
 
 
+# ------------------------------------------------------------------ citation attribution
+#
+# Figures are the one part of a claim that can be checked without a model: "5,000" is either
+# in the cited section or it is not. Words for small numbers count as figures on both sides,
+# so "three consecutive minutes" in a source supports "3 minutes" in an answer.
+
+_FIGURE = re.compile(r"(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(%?)")
+_NUMBER_WORDS = {
+    w: str(i)
+    for i, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve".split()  # noqa: SIM905
+    )
+}
+_NUMBER_WORD = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?!\[)|\n+")
+_REPEATED_SOURCE = re.compile(
+    r"(sources? \[(\d{1,2})\])(?:(?:,\s*(?:and\s+)?|\s+and\s+)(?:sources? )?\[\2\])+"
+)
+_REPEATED_MARKER = re.compile(r"(\[(\d{1,2})\])(?:\s*\[\2\])+")
+
+
+def figures(text: str) -> set[str]:
+    """Numbers stated in ``text``, normalised: "5,000" -> "5000", "1%" -> "1%", "three" -> "3".
+    Citation markers are not figures."""
+    text = _NUMBER_WORD.sub(lambda m: _NUMBER_WORDS[m.group(1).lower()], _MARKER.sub(" ", text))
+    return {m.group(1).replace(",", "") + m.group(2) for m in _FIGURE.finditer(text)}
+
+
+def _repoint_sentence(sentence: str, have: list[set[str]]) -> tuple[str, int]:
+    cited = [int(n) for n in _MARKER.findall(sentence) if 1 <= int(n) <= len(have)]
+    stated = figures(sentence)
+    if not cited or not stated:
+        return sentence, 0
+    covered = set().union(*(have[n - 1] for n in cited))
+    # Only figures some retrieved source actually contains can be re-attributed; a figure no
+    # source has is a different defect (the judge's job), not an attribution error.
+    missing = {f for f in stated - covered if any(f in h for h in have)}
+    if not missing:
+        return sentence, 0
+    replacements: list[int] = []
+    while missing:
+        best = max(range(1, len(have) + 1), key=lambda k: (len(have[k - 1] & missing), -k))
+        if not have[best - 1] & missing:
+            break
+        replacements.append(best)
+        missing -= have[best - 1]
+    # A cited source that contains none of the sentence's figures supports nothing in it.
+    dead = {n for n in cited if not have[n - 1] & stated}
+    if dead:
+        sentence = _MARKER.sub(
+            lambda m: f"[{replacements[0]}]" if int(m.group(1)) in dead else m.group(0), sentence
+        )
+    added = [k for k in replacements if f"[{k}]" not in sentence]
+    if added:
+        last = list(_MARKER.finditer(sentence))[-1]
+        extra = "".join(f"[{k}]" for k in added)
+        sentence = sentence[: last.end()] + extra + sentence[last.end() :]
+    sentence = _REPEATED_MARKER.sub(r"\1", _REPEATED_SOURCE.sub(r"\1", sentence))
+    return sentence, len(dead) + len(added)
+
+
+def repoint_citations(answer: str, chunks: list[RetrievedChunk]) -> tuple[str, int]:
+    """Per sentence: if a figure the sentence states is in none of the sources it cites but is
+    in another retrieved source, cite that source instead - replacing cited sources that
+    contain none of the sentence's figures, or adding to the ones that do. Sentences without
+    figures, or without citations, are left alone. Returns the answer and how many cited sources
+    were replaced or added."""
+    have = [figures(c.context) for c in chunks]
+    out: list[str] = []
+    changed = 0
+    last = 0
+    for boundary in [*_SENTENCE_END.finditer(answer), None]:
+        end = boundary.start() if boundary else len(answer)
+        sentence, n = _repoint_sentence(answer[last:end], have)
+        out.append(sentence + (boundary.group(0) if boundary else ""))
+        changed += n
+        last = boundary.end() if boundary else end
+    return "".join(out), changed
+
+
 def finalize(answer: str, chunks: list[RetrievedChunk]) -> GroundedAnswer:
     """Keep only citation markers that point at a provided source; build citation records
     in order of first use."""
     answer = normalize_markers(answer, len(chunks))
     if is_abstention(answer):
         return GroundedAnswer(ABSTAIN, [], True, len(_MARKER.findall(answer)))
+    answer, repointed = repoint_citations(answer, chunks)
     invalid = 0
     order: list[int] = []
 
@@ -159,7 +244,7 @@ def finalize(answer: str, chunks: list[RetrievedChunk]) -> GroundedAnswer:
         )
         for n in order
     ]
-    return GroundedAnswer(cleaned, citations, False, invalid)
+    return GroundedAnswer(cleaned, citations, False, invalid, repointed)
 
 
 def abstention() -> GroundedAnswer:
