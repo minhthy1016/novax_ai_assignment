@@ -1,38 +1,27 @@
-"""Chunking strategies with citable locators.
+"""Parent-child ("small-to-big") chunking with citable locators.
 
-Three strategies share one output type, so ingestion, retrieval and the chunking eval
-(``evaluation/chunking_eval.py``) can swap them freely:
+* **Children** (~64 tokens) are what gets embedded and matched: small chunks keep the
+  embedding focused on one fact.
+* **Parents** are sections: consecutive paragraphs under the same heading path, packed up to
+  ~256 tokens and never crossing a heading. The model receives the parent (``context``), so
+  an answer sees the surrounding facts, and the citation names the section.
+* The **full heading path** ("Service playbooks > Payment API") is prepended to what is
+  embedded, so facts that are only unambiguous under their heading keep it.
+* An oversized paragraph is split at sentence boundaries with one sentence of overlap.
 
-``structural``
-    The original day-3 strategy: paragraphs/list items packed to a small target (~64
-    tokens); header = title + nearest heading. Precise citations, but short chunks lose
-    context - kept as the evaluation baseline.
-
-``hierarchical``
-    Docling-HybridChunker-style. A chunk never spans two sections; a section is packed
-    into as few chunks as fit ``max_tokens`` (oversized paragraphs are split at sentences
-    with one sentence of overlap); the *full heading path* ("Service playbooks > Payment
-    API") is prepended to the embedded text. Facts that are only unambiguous under their
-    heading (90% vs 80% escalation thresholds) keep that heading.
-
-``parent_child`` ("small-to-big")
-    Match on small structural chunks (precise embeddings), but hand the model the whole
-    hierarchical section that contains the match (``context``), so the answer has the
-    surrounding facts. Citations point at the section.
-
-The choice between them is made from measured recall@k - see architecture.md D-20.
+This strategy was chosen over structural, hierarchical, fixed-window, per-page and Docling's
+HybridChunker by measured recall@k (architecture.md D-20). The alternatives live in
+``evaluation/chunkers.py`` and reuse the building blocks below.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal
 
 from opsassist.knowledge.parsing import Block, ParsedDocument
 from opsassist.providers.base import estimate_tokens
 
-Strategy = Literal["structural", "hierarchical", "parent_child"]
 DASH = "\u2013"  # en dash for ranges in locators, e.g. paragraphs 1 to 4
 PATH_SEP = " > "  # heading path in embedded text
 LOCATOR_SEP = " \u203a "  # single right angle quote between headings in locators
@@ -41,10 +30,15 @@ _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
 
 @dataclass(frozen=True, slots=True)
 class ChunkingConfig:
-    strategy: Strategy = "parent_child"  # same default as Settings.chunking_strategy
-    target_tokens: int = 64  # structural chunks / parent_child children
-    max_tokens: int = 256  # hierarchical sections / parents
+    target_tokens: int = 64  # children (what is embedded and matched)
+    max_tokens: int = 256  # parents (sections handed to the model)
     split_tokens: int = 160  # a single paragraph above this is split at sentences
+
+    @property
+    def chunker_id(self) -> str:
+        """Recorded per document version and part of the content hash: changing the
+        chunking re-indexes documents instead of mixing chunkings in one index."""
+        return f"parent_child:{self.target_tokens}/{self.max_tokens}/{self.split_tokens}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +52,9 @@ class Unit:
 @dataclass(frozen=True, slots=True)
 class Chunk:
     index: int
-    text: str  # the matched text
+    text: str  # the matched text (child)
     embed_text: str  # what is embedded and full-text indexed
-    context: str  # what the model receives; equals text except for parent_child
+    context: str  # what the model receives (parent section)
     locator: str
     section: str | None
     headings: tuple[str, ...]
@@ -68,7 +62,11 @@ class Chunk:
     token_count: int
 
 
-def _units(blocks: list[Block], split_tokens: int, target_tokens: int) -> list[Unit]:
+# ------------------------------------------------------------------ building blocks
+
+
+def split_units(blocks: list[Block], split_tokens: int, target_tokens: int) -> list[Unit]:
+    """Paragraphs and list items as units; oversized ones split at sentences with overlap."""
     units: list[Unit] = []
     ordinal = 0
     for block in blocks:
@@ -78,7 +76,6 @@ def _units(blocks: list[Block], split_tokens: int, target_tokens: int) -> list[U
         if estimate_tokens(block.text) <= split_tokens:
             units.append(Unit(block.text, ordinal, block.page, block.headings))
             continue
-        # Oversized paragraph: split at sentence boundaries, one sentence of overlap.
         piece: list[str] = []
         for sentence in _SENTENCE.split(block.text):
             if piece and estimate_tokens(" ".join([*piece, sentence])) > target_tokens:
@@ -90,7 +87,7 @@ def _units(blocks: list[Block], split_tokens: int, target_tokens: int) -> list[U
     return units
 
 
-def _pack(units: list[Unit], limit: int) -> list[list[Unit]]:
+def pack_units(units: list[Unit], limit: int) -> list[list[Unit]]:
     """Greedy packing that never crosses a section (heading path) boundary."""
     groups: list[list[Unit]] = []
     current: list[Unit] = []
@@ -113,7 +110,7 @@ def _path(title: str, headings: tuple[str, ...]) -> list[str]:
     return [h for h in headings if h != title]
 
 
-def _locator(title: str, group: list[Unit], full_path: bool) -> str:
+def locator_for(title: str, group: list[Unit], full_path: bool = True) -> str:
     first, last = group[0], group[-1]
     paras = (
         f"¶{first.ordinal}"
@@ -133,19 +130,19 @@ def _locator(title: str, group: list[Unit], full_path: bool) -> str:
     return " ".join(parts)
 
 
-def _header(title: str, headings: tuple[str, ...], full_path: bool) -> str:
+def header_for(title: str, headings: tuple[str, ...], full_path: bool = True) -> str:
     path = _path(title, headings)
     if not path:
         return title
     return f"{title}\n{PATH_SEP.join(path)}" if full_path else f"{title} - {path[-1]}"
 
 
-def _body(group: list[Unit]) -> str:
+def body_of(group: list[Unit]) -> str:
     return "\n".join(u.text for u in group)
 
 
-def _make(index: int, group: list[Unit], context: str, header: str, locator: str) -> Chunk:
-    body = _body(group)
+def make_chunk(index: int, group: list[Unit], context: str, header: str, locator: str) -> Chunk:
+    body = body_of(group)
     return Chunk(
         index=index,
         text=body,
@@ -159,29 +156,17 @@ def _make(index: int, group: list[Unit], context: str, header: str, locator: str
     )
 
 
+# ------------------------------------------------------------------ production chunker
+
+
 def chunk_document(doc: ParsedDocument, config: ChunkingConfig | None = None) -> list[Chunk]:
     cfg = config or ChunkingConfig()
     title = doc.meta.title
-    units = _units(doc.blocks, cfg.split_tokens, cfg.target_tokens)
-
-    if cfg.strategy == "structural":
-        return [
-            _make(i, g, _body(g), _header(title, g[0].headings, False), _locator(title, g, False))
-            for i, g in enumerate(_pack(units, cfg.target_tokens))
-        ]
-
-    sections = _pack(units, cfg.max_tokens)
-    if cfg.strategy == "hierarchical":
-        return [
-            _make(i, g, _body(g), _header(title, g[0].headings, True), _locator(title, g, True))
-            for i, g in enumerate(sections)
-        ]
-
-    # parent_child: small children for matching, each carrying its whole section as context.
+    units = split_units(doc.blocks, cfg.split_tokens, cfg.target_tokens)
     chunks: list[Chunk] = []
-    for parent in sections:
-        parent_text, parent_locator = _body(parent), _locator(title, parent, True)
-        for child in _pack(parent, cfg.target_tokens):
-            header = _header(title, child[0].headings, True)
-            chunks.append(_make(len(chunks), child, parent_text, header, parent_locator))
+    for parent in pack_units(units, cfg.max_tokens):
+        context, locator = body_of(parent), locator_for(title, parent)
+        for child in pack_units(parent, cfg.target_tokens):
+            header = header_for(title, child[0].headings)
+            chunks.append(make_chunk(len(chunks), child, context, header, locator))
     return chunks

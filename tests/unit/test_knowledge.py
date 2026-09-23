@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from evaluation import chunkers
 
 from opsassist.auth import Principal
 from opsassist.knowledge.chunking import DASH, LOCATOR_SEP, ChunkingConfig, chunk_document
@@ -81,11 +82,16 @@ def test_documents_without_metadata_are_rejected(tmp_path: Path) -> None:
             parse_file(tmp_path / name)
 
 
-STRUCTURAL = ChunkingConfig("structural")
+def test_children_are_small_and_cite_their_section() -> None:
+    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-001.md"))
+    # Two children are matched separately; both cite the whole section (steps 1-7).
+    assert [c.text.split(".")[0] for c in chunks] == ["1", "5"]
+    assert {c.locator for c in chunks} == {f"¶1{DASH}7"}
+    assert all("21:00-23:00 MYT" in c.context for c in chunks)
 
 
-def test_chunks_carry_citable_locators() -> None:
-    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-001.md"), STRUCTURAL)
+def test_structural_baseline_locators_in_evaluation() -> None:
+    chunks = chunkers.structural(parse_file(KNOWLEDGE / "KB-ENG-001.md"))
     assert [c.locator for c in chunks] == [f"¶1{DASH}4", f"¶5{DASH}7"]
     assert "21:00-23:00 MYT" in chunks[0].text
     assert chunks[0].embed_text.startswith("Production Deployment Procedure\n")  # context header
@@ -110,9 +116,10 @@ def test_oversized_paragraph_is_split_with_sentence_overlap(tmp_path: Path) -> N
         "---\ndocument_id: KB-LNG-001\ntitle: Long\ndepartment: engineering\n"
         "classification: internal\nupdated_at: 2026-01-01\n---\n" + " ".join(sentences)
     )
-    chunks = chunk_document(parse_file(doc), STRUCTURAL)
+    cfg = ChunkingConfig()
+    chunks = chunk_document(parse_file(doc), cfg)
     assert len(chunks) > 1
-    assert all(c.token_count <= STRUCTURAL.split_tokens for c in chunks)
+    assert all(c.token_count <= cfg.split_tokens for c in chunks)
     last_of_first = chunks[0].text.rsplit(". ", 1)[-1]
     assert last_of_first.rstrip(".") in chunks[1].text  # one sentence of overlap
 
@@ -126,9 +133,7 @@ def test_pdf_heading_path_survives_page_breaks() -> None:
 
 
 def test_parent_child_matches_small_but_hands_over_the_section() -> None:
-    chunks = chunk_document(
-        parse_file(KNOWLEDGE / "KB-ENG-003.md"), ChunkingConfig("parent_child", 64, 256)
-    )
+    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-003.md"), ChunkingConfig(64, 256))
     assert all(c.text in c.context for c in chunks)
     payment = [c for c in chunks if c.section == "Payment API"]
     assert payment and all("Service playbooks > Payment API" in c.embed_text for c in payment)
