@@ -241,7 +241,7 @@ Arguments, results and logs are redacted; provider keys live only in environment
 | Document upload by authorized users | ✅ |
 | Persistent memory (inspect and delete) | ✅ |
 | Per-caller rate limiting on model-backed routes | ✅ |
-| Evaluation benchmark | 🟡 34-case gold set + answer scoring; the 30+ case suite with an LLM judge is day 5 |
+| Evaluation suite (71 cases, LLM judge, control baseline) | ✅ [report](evaluation/reports/evaluation.md) · [analysis](evaluation/reports/analysis.md) |
 | Production SSO / OIDC | 🟡 dev token issuer stands in |
 | Scale proposal (5k employees, 1M documents, GPU cluster) | ✅ [D-60](docs/decisions/D-60-scale-proposal-aws.md), derived from measured numbers - not load-tested |
 | AWS deployment itself | 🟡 designed, not built: the repository deploys with Docker Compose |
@@ -545,6 +545,72 @@ Child size barely matters: 32, 64, 96 and 128 tokens all score Recall@1 0.971 in
 The gain comes from heading-aware parents, not from small children.
 
 
+## Evaluation
+
+71 cases, each one employee asking one question, across the eight categories the brief
+names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
+`make eval-fast` for the deterministic axes only. Latest run:
+[`evaluation/reports/evaluation.md`](evaluation/reports/evaluation.md), read by hand in
+[`analysis.md`](evaluation/reports/analysis.md); the design is
+[D-50](docs/decisions/D-50-evaluation-design.md).
+
+### Where the questions live
+
+| File | What is in it | Used by |
+|---|---|---|
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **70 evaluation cases** — the answering suite. One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) | **41 retrieval gold cases** — question plus the exact source text that answers it (`evidence`, or `evidence_terms` for facts in table cells) | `make test-eval`, `chunking_eval.py` |
+| [`evaluation/answer_eval.py`](evaluation/answer_eval.py) | the six must-abstain questions used by the fast lexical scorer | `make test-eval` |
+
+Adding a case is one line in `cases.jsonl`; nothing else changes. The categories are fixed by
+a test, so a new one has to be deliberate.
+
+**Two graders, on purpose.** Whether a tool was authorized, whether a sensitive action
+executed, whether a forbidden document appeared — those are rules, compared exactly, with no
+model involved. Only prose is judged by a model, and the judge is a **different family**
+(Qwen judging Llama), called **outside** the pipeline, and **local**, so judging a
+confidential answer never sends it off the machine.
+
+| Axis | Result (95% CI) |
+|---|---|
+| Cases fully correct | 64/71 = 0.901 (0.81–0.95) — 67/71 read by hand |
+| Tool accuracy — choice, arguments, allowed/denied/pending | 30/30 = 1.000 (0.89–1.00) |
+| Abstention and refusal | 12/12 = 1.000 (0.76–1.00) |
+| Department isolation held | 10/10 = 1.000 (0.72–1.00) |
+| Citations valid (every cited source was retrieved) | 37/37 = 1.000 (0.91–1.00) |
+| Expected source cited (an uncited answer counts as a miss) | 36/37 = 0.973 (0.86–1.00) |
+| **Citation supports the exact claim** (judged, per citation) | 33/39 = 0.846 (0.70–0.93) |
+| Retrieval: expected source in top-4 · MRR | 37/39 = 0.949 · 0.936 |
+| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a refusal that names "system prompts" |
+| Judge: reference facts supported | 34/39 = 0.872 (0.73–0.94) |
+| End-to-end p50 / p95 · mean tokens per case | 0.97s / 2.28s · 490 |
+
+### What the brief asks for, and what measures it
+
+| Brief's metric | Expected evidence | Where it is measured |
+|---|---|---|
+| Answer correctness | reference answer or scored rubric | `reference_facts` per case, one judge verdict each (`supported` / `contradicted` / `missing`) |
+| Retrieval relevance | relevant chunks in top-K, rank-sensitive | `expected_sources` rank in the caller's own `/api/search`, reported as top-4 rate **and MRR** |
+| Citation correctness | citation supports the exact claim and resolves to a source | two checks: every cited source must have been retrieved (exact), **and** the passage behind each marker must support the sentence it is attached to (judged, per citation) |
+| Hallucination / abstention | unsupported claims, correct refusal | judge's untraceable claims + `must_not_contain` guards + a deterministic abstention check per case |
+| Tool accuracy | correct tool, arguments, authorization, confirmation | `expected_tool`, `expected_arguments`, `expected_outcome` (`tool_ok` / `tool_denied` / `tool_pending`), compared exactly |
+| Performance | end-to-end latency and model/provider timing | p50 / p95 end-to-end, mean provider time per case from the attempt records |
+| Efficiency | token or usage count and estimated cost | prompt/completion tokens and estimated cost, per case and per category |
+
+**The seven failures, read by hand: four real, two judge errors, one guard false
+positive.** The layout-heavy PDF was added to find table-reading errors, and it did: `L04`,
+asked how fast Tier 2 must acknowledge a **SEV1**, answered 30 minutes — the row *above* the
+right one. The parser now writes every table row with its own labels (`Tier 2 - platform
+(SEV1): Acknowledge within = 10 minutes; ...`, D-20) and L04 passes. The real failures left
+are `L03`, a correct fact credited to the wrong source; `M02`, which reports what the sources
+do not say instead of correcting a false premise; and two abstentions on false premises.
+Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
+
+**The control.** The same model with no retrieval and no policy states 16% of the reference
+facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions
+the caller had no right to have answered. The point is not that it is bad at facts — it is
+that nothing it says can be checked, and it has no notion of who is asking.
+
 ## Tests
 
 ```bash
@@ -628,10 +694,24 @@ Dockerfile             one image, used by both the API and the worker
 Honest list of what this build does **not** do, or does only partly. Each one is real and
 checkable in the code.
 
-**Assignment scope still open (days 5-6 of the plan)**
-- The evaluation suite is a 34-case retrieval gold set plus scripted live checks; the
-  30+ case suite with an LLM judge, abstention/injection categories and cost/latency
-  reporting is day 5.
+**What the evaluation found (71 cases, read by hand in `evaluation/reports/analysis.md`)**
+- **Wide tables are read by the wrong row.** Asked how fast Tier 2 on-call must acknowledge
+  a SEV1, the answer gave the value from the row above (30 minutes instead of 10). Retrieval
+  was right; the answer step matched the first row label it saw.
+- **The assistant abstains instead of correcting a false premise.** "Since the incident
+  lasted three hours…" gets "I couldn't find this" rather than "it was 18 minutes". Safe,
+  but a colleague would correct you.
+- **One answerable question was abstained on** (API-tier patching, from a PDF).
+- **Partial answers cost some precision.** Two-part questions where the documents cover one
+  part now get that part, cited, plus a note on what is not covered (K18). A 3B model
+  sometimes adds that note to questions it answered in full (K08, L04 in the latest run).
+- **A correct fact can be credited to the wrong source** (L03): every citation resolves to a
+  source the caller was given, but a 3B model sometimes picks a neighbour that shares the
+  vocabulary. The per-citation judge catches it; nothing at runtime does yet.
+- **The judge is not the final word**: it twice marked a correct answer as contradicted
+  because the answer opened with "No, …". Every failing case prints its answer so a reader
+  can overrule the judge; scored by hand the run is 66/70 rather than 64/70.
+- The answering model in these runs is a 3B local model - a floor, not a target.
 - The scale proposal exists ([D-60](docs/decisions/D-60-scale-proposal-aws.md)) but its
   capacity numbers are derived from single-request measurements, not from a load test.
   D-60 names the three measurements that must replace them first.
@@ -660,8 +740,8 @@ checkable in the code.
 - The gold set has 34 cases, so a single case moves a metric by about 0.03; differences
   below roughly three cases are not distinguishable, and the Docling comparison is fair only
   for simple layouts so far.
-- Fact coverage is measured lexically, so it under-credits paraphrase; an LLM judge per
-  claim is day-5 work.
+- `answer_eval.py` measures fact coverage lexically, so it under-credits paraphrase; it is
+  kept as a fast floor, with the LLM judge in `run_eval.py` as the headline.
 
 **Knowledge and uploads**
 - Uploads accept Markdown, plain text and PDF (5 MB), scanned for credentials; there is no
@@ -669,8 +749,9 @@ checkable in the code.
 - An uploaded document is answerable immediately: there is no review step before it joins
   its department's index, so a legitimate owner can still publish something wrong. The
   mitigations are provenance, audit and version rollback.
-- Complex PDFs (tables, multi-column, scans) are not yet part of the evaluation, so the
-  Docling comparison is fair only for simple layouts.
+- The corpus now includes a layout-heavy PDF (tables, two columns, a continued table), but
+  no scanned page: OCR is untested, and that is where Docling's layout model would matter
+  most.
 
 **Providers**
 - Claude is implemented against the official SDK but **has never run live** — no API key was

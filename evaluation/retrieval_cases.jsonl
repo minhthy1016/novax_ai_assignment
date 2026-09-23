@@ -32,3 +32,10 @@
 {"id": "R32", "user": "U001", "query": "How long are database backups kept?", "expected_doc": "KB-ENG-004", "evidence": ["backups are kept for 35 days"]}
 {"id": "R33", "user": "U001", "query": "When is the monthly restore test done?", "expected_doc": "KB-ENG-004", "evidence": ["first Tuesday of every month"]}
 {"id": "R34", "user": "U001", "query": "What triggers an automatic scale-out?", "expected_doc": "KB-ENG-004", "evidence": ["Sustained CPU above 85% for 20 minutes"]}
+{"id": "R35", "user": "U001", "query": "What is the funded RPS for checkout-api?", "expected_doc": "KB-ENG-005", "evidence": [], "evidence_terms": [["checkout-api", "1,200"]]}
+{"id": "R36", "user": "U001", "query": "What is the p95 latency target for search-api?", "expected_doc": "KB-ENG-005", "evidence": [], "evidence_terms": [["search-api", "250 ms"]]}
+{"id": "R37", "user": "U001", "query": "What triggers scaling for payment-worker?", "expected_doc": "KB-ENG-005", "evidence": [], "evidence_terms": [["payment-worker", "queue depth above 5,000"]]}
+{"id": "R38", "user": "U001", "query": "How much does Tier 2 on-call cover cost per month?", "expected_doc": "KB-ENG-005", "evidence": [], "evidence_terms": [["tier 2 - platform", "9,600"]]}
+{"id": "R39", "user": "U001", "query": "How quickly must platform on-call acknowledge a SEV1?", "expected_doc": "KB-ENG-005", "evidence": [], "evidence_terms": [["sev1", "10 minutes"]]}
+{"id": "R40", "user": "U001", "query": "At what point does alerting fire relative to the p95 target?", "expected_doc": "KB-ENG-005", "evidence": ["alerting fires at 1.5 times the target for ten consecutive minutes"]}
+{"id": "R41", "user": "U001", "query": "Why does reporting-batch have no funded RPS?", "expected_doc": "KB-ENG-005", "evidence": ["scheduled job rather than a request service"]}

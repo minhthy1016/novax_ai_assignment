@@ -28,10 +28,10 @@ alternatives and the measurement behind each choice are written down.
 ## Task 2 - RAG knowledge system
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
-| T2.1 | Ingest PDF, Markdown, plain text | `knowledge/parsing.py` (front matter / sidecar metadata, pypdf layout mode) | `test_markdown_pdf_and_text_are_parsed_with_metadata`, `test_documents_without_metadata_are_rejected`; worker indexed all 8 sample docs | ✅ |
+| T2.1 | Ingest PDF, Markdown, plain text | `knowledge/parsing.py` (front matter / sidecar metadata, pypdf layout mode, PDF table rows rewritten with their own labels) | `test_markdown_pdf_and_text_are_parsed_with_metadata`, `test_documents_without_metadata_are_rejected`, `test_pdf_table_rows_carry_their_own_labels`; worker indexed all 8 sample docs | ✅ |
 | T2.2 | Parse → normalize → chunk → embed → index → retrieve → (rerank) → generate | `knowledge/{parsing,chunking,ingest,retrieval}.py`, `rag.py`, worker | `tests/integration/test_rag_api.py` (E01, E02, E04, E05, E09); live E01–E12 on NIM (PR description) | ✅ |
 | T2.3 | Citations with title + stable locator | `rag.finalize` (validated against retrieved sources), `KB-ENG-001@v1#¶1–4` | `test_citations_are_validated_against_retrieved_sources`, `test_full_width_citation_markers_are_recognised`, `test_e01_deploy_window_cites_the_procedure` | ✅ |
-| T2.4 | Justify chunk size, overlap, embedding model, metadata schema, top-K, reranking | chunking and retrieval design (D-20, D-21) | `evaluation/chunking_eval.py` (8 strategies incl. Docling, report `evaluation/reports/chunking.md`), `evaluation/relevance_calibration.py`, `evaluation/retrieval_api_eval.py` (live API: R@1 0.941, R@3 1.000, MRR 0.961) | ✅ |
+| T2.4 | Justify chunk size, overlap, embedding model, metadata schema, top-K, reranking | chunking and retrieval design (D-20, D-21) | `evaluation/chunking_eval.py` (11 strategies incl. Docling, on a corpus that now includes a layout-heavy PDF; report `evaluation/reports/chunking.md`: production 0.878 Hit@1 vs Docling 0.854, intervals overlap), `evaluation/relevance_calibration.py`, `evaluation/retrieval_api_eval.py` | ✅ |
 | T2.5 | Department + sensitivity filters before the model | `policy/access.py`, SQL filter + Postgres RLS (D-22), separate confidential table, egress routing (D-15), runtime role (D-17) | `test_access_matrix`, `test_e03_…`, `test_hr_executive_without_confidential_permission_gets_nothing`, `test_row_level_security_blocks_reads_even_without_the_app_filter`, `test_runtime_role_is_not_a_superuser_and_cannot_bypass_rls`, `test_confidential_context_never_goes_to_egress_providers` | ✅ |
 | T2.6 | Replacement / re-index without duplicate active chunks | versioned atomic swap + partial unique index (D-23) | `test_reindex_replaces_without_duplicate_active_chunks` | ✅ |
 
@@ -57,19 +57,19 @@ alternatives and the measurement behind each choice are written down.
 ## Task 5 - Evaluation
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
-| T5.1 | ≥30 cases covering all 7 categories | | | ⬜ |
-| T5.2 | Answer correctness | | | ⬜ |
-| T5.3 | Retrieval relevance (rank-sensitive) | | | ⬜ |
-| T5.4 | Citation correctness | | | ⬜ |
-| T5.5 | Hallucination / abstention | | | ⬜ |
-| T5.6 | Tool accuracy | | | ⬜ |
-| T5.7 | Latency + provider timing | | | ⬜ |
-| T5.8 | Tokens + estimated cost | | | ⬜ |
+| T5.1 | ≥30 cases covering all 7 categories | `evaluation/cases.jsonl`: **71 cases** across answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure, each with a named actor, expected sources, forbidden sources, expected tool and reference facts | `test_the_suite_covers_every_category_the_brief_names`; `make eval` report in `evaluation/reports/evaluation.md` | ✅ |
+| T5.2 | Answer correctness | LLM judge, one verdict per reference fact (`evaluation/judge.py`), different model family, called outside the pipeline (D-50) | `evaluation/reports/evaluation.md` headline table; harness graded by `tests/unit/test_eval_harness.py` | ✅ |
+| T5.3 | Retrieval relevance (rank-sensitive) | rank of `expected_sources` in the caller's own `/api/search`, reported as top-4 hit rate and MRR | `evaluation/reports/evaluation.md`; `evaluation/retrieval_api_eval.py` | ✅ |
+| T5.4 | Citation correctness | every cited source must have been retrieved, and the expected source must be cited; forbidden sources must appear in neither | `evaluation/reports/evaluation.md` (citations valid / expected cited / isolation) | ✅ |
+| T5.5 | Hallucination / abstention | deterministic abstention check per case + `must_not_contain` guards + the judge's untraceable claims, each printed in the report | `evaluation/reports/evaluation.md`; `test_a_dead_provider_must_not_produce_prose` | ✅ |
+| T5.6 | Tool accuracy | expected tool, expected arguments and expected status (ok / denied / pending) compared exactly, no model involved | `evaluation/reports/evaluation.md`; `test_sensitive_and_denied_outcomes_are_graded_exactly` | ✅ |
+| T5.7 | Latency + provider timing | end-to-end p50/p95 per run and mean provider time per case, from the attempt records | `evaluation/reports/evaluation.md` cost-and-latency table | ✅ |
+| T5.8 | Tokens + estimated cost | prompt/completion tokens and estimated cost per case and per category, from the usage the gateway records | `evaluation/reports/evaluation.md` cost-and-latency table | ✅ |
 
 ## Task 6 - Security
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
-| T6.1 | Malicious document indexed; instructions not followed | escaped `<source>` blocks, untrusted-data prompt (D-25); tools authorized outside the model, sensitive actions always pending (D-31) | `test_sources_cannot_break_out_of_their_element`, `test_e09_…`, `test_injection_cannot_skip_the_approval_step`; live E09 | ✅ (eval in D5) |
+| T6.1 | Malicious document indexed; instructions not followed | escaped `<source>` blocks, untrusted-data prompt (D-25); tools authorized outside the model, sensitive actions always pending (D-31) | `test_sources_cannot_break_out_of_their_element`, `test_e09_…`, `test_injection_cannot_skip_the_approval_step`; live E09 | ✅ (4 injection cases in `evaluation/cases.jsonl`: 4/4 in the latest run) |
 | T6.2 | Authentication + RBAC/ABAC | `auth.py`: role-bound JWT (user + role re-checked per request), permissions from DB only | `test_every_api_route_requires_a_token`, `test_token_is_rejected_after_role_change`, `test_token_is_rejected_after_deactivation` | 🟡 authN done; authZ policies day 4 |
 | T6.3 | Department isolation + least-privilege tools | documents (D-22, D-17); each tool needs its own permission, field-level policy for server data, upload confined to the uploader's department (D-27) | see T2.5; `test_e07_…`, `test_upload_is_confined_to_the_uploader_department` | ✅ |
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |

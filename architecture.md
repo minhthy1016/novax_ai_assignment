@@ -130,6 +130,7 @@ reasoning stays available.
 | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](docs/decisions/D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
+| [D-50](docs/decisions/D-50-evaluation-design.md) | Evaluation design: deterministic rules, judged prose | Evaluation |
 | [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
 | [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, fail open | Operations |
 | [D-62](docs/decisions/D-62-console-ui-is-a-client.md) | The console is a client, dev/test only | Scope |
@@ -143,9 +144,6 @@ reasoning stays available.
 | May internal/confidential documents go to Claude or similar? | Confidential must not be exposed to external models; use roles and permissions | Implemented as D-15: the context's highest classification is compared against `OPSASSIST_EGRESS_MAX_CLASSIFICATION`. |
 | Should RAG enforce permissions at retrieval time? | "suggest your idea" | Our answer: yes, and in two layers - the SQL filter *and* Postgres row-level security under a non-superuser role, with confidential material in a separate table (D-17, D-22). Filtering after retrieval would already have put the text in memory next to the model. |
 | Which cloud for the scale proposal? | AWS (used in production today) | The day-6 proposal targets AWS concretely (D-50 note below). |
-
-### Still open
-- D-50 evaluation design: rubric, judge model, control baselines _(day 5)_.
 
 ## 4. Security model (engineering view)
 
@@ -168,13 +166,26 @@ engineering level, each control is one of these, and each has its own record:
 Run them: `make test-security`.
 
 ## 5. Evaluation design
-Gold sets and scripts live in [`evaluation/`](evaluation/). Today: a 34-case retrieval gold
-set with chunker-independent evidence (`retrieval_cases.jsonl`), a chunking comparison
-including a Docling reference (`chunking_eval.py`), relevance-gate calibration, retrieval
-through the live API, and answer-level citation/fact/abstention scoring (`answer_eval.py`).
-Every rate is reported with a 95% Wilson interval. _Day 5:_ the 30+ case suite with an LLM
-judge per claim, injection and isolation categories, cost and latency reporting, and a
-complex-PDF set that gives Docling's layout model a fair comparison.
+
+Everything lives in [`evaluation/`](evaluation/); the reasoning is [D-50](docs/decisions/D-50-evaluation-design.md).
+
+| Suite | What it answers | Command |
+|---|---|---|
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 71 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
+| `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`), per-citation support ("does this passage say this sentence?") and untraceable claims - from a **different model family**, called outside the pipeline, and required to quote the answer before it may call a fact contradicted | part of `make eval` |
+| `chunking_eval.py` | 11 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
+| [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) + `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |
+| `relevance_calibration.py` | Whether similarity alone can separate answerable from out-of-scope (it cannot; measured) | `uv run python -m evaluation.relevance_calibration` |
+
+The suite's axes map one-to-one onto the metrics the brief names; that mapping table is in
+[the README](README.md#evaluation).
+
+Two graders, deliberately: **a rule is compared exactly** (tool choice and arguments,
+authorization, pending-vs-executed, isolation, abstention, citation validity) and **only
+prose is judged by a model**. The judge is local, so judging a confidential answer never
+sends it off the machine - the same rule the assistant follows (D-15). Every rate is
+reported with a 95% Wilson interval and every failing case is printed with its answer, so
+the report can be audited rather than believed.
 
 ## 6. Scale proposal
 

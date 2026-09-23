@@ -56,10 +56,19 @@ test-eval: ## Evaluation: retrieval + answer quality through the running API
 	uv run python -m evaluation.retrieval_api_eval
 	uv run python -m evaluation.answer_eval --model ollama/llama3.2-3b
 
+eval: ## Full 71-case suite with the LLM judge (needs `ollama pull qwen2.5:7b`)
+	uv run python -m evaluation.run_eval --model ollama/llama3.2-3b --judge ollama/qwen2.5:7b
+
+eval-fast: ## The same suite, deterministic axes only (no judge, ~3 min)
+	uv run python -m evaluation.run_eval --model ollama/llama3.2-3b --no-judge
+
+eval-control: ## The suite plus the ungrounded control baseline
+	uv run python -m evaluation.run_eval --model ollama/llama3.2-3b --judge ollama/qwen2.5:7b --control
+
 test-all: ## Everything (needs `make up` + `make ingest`)
 	uv run pytest
 
 logs: ## Tail API logs
 	$(COMPOSE) logs -f api
 
-.PHONY: help install up down reset migrate seed ui ingest ingest-inline jobs lint fmt test test-integration test-security test-eval test-all logs
+.PHONY: help install up down reset migrate seed ui ingest ingest-inline jobs lint fmt test test-integration test-security test-eval eval eval-fast eval-control test-all logs

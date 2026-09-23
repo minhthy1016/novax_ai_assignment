@@ -183,6 +183,89 @@ def _sidecar(path: Path) -> dict[str, str]:
     return {str(k): str(v) for k, v in data.items()}
 
 
+# ------------------------------------------------------------------ PDF tables
+#
+# Layout extraction renders a table as columns of padded text, and ``normalize`` collapses
+# the padding - so a row reaches the model as "Tier 2 - platform 24/7 30 minutes 9,600" with
+# the column names three lines up. A small model then reads the value off the wrong row
+# (eval case L04). The PDF itself still knows the geometry: every cell is its own text run
+# with an x position. Lines of >= 3 runs whose x positions repeat on the following line are
+# a table; the first is its header, and every data row is rewritten to carry its own labels:
+#
+#     Tier 2 - platform (SEV1): Hours = 24/7; Acknowledge within = 10 minutes; ...
+
+_MIN_COLUMNS = 3
+_X_TOLERANCE = 3.0  # points; cells in one column start at the same x
+
+
+def _page_lines(page: object) -> list[list[tuple[float, str]]]:
+    """Text runs grouped into visual lines (same baseline), top to bottom, each line's runs
+    left to right as (x, text)."""
+    runs: dict[float, list[tuple[float, str]]] = {}
+
+    def visit(text: str, cm: list[float], tm: list[float], *_: object) -> None:
+        if text.strip():
+            x, y = tm[4] * cm[0] + cm[4], tm[5] * cm[3] + cm[5]
+            runs.setdefault(round(y, 1), []).append((x, text.strip()))
+
+    page.extract_text(visitor_text=visit)  # type: ignore[attr-defined]
+    return [sorted(runs[y]) for y in sorted(runs, reverse=True)]
+
+
+def _same_columns(a: list[tuple[float, str]], b: list[tuple[float, str]]) -> bool:
+    return len(a) == len(b) and all(
+        abs(xa - xb) <= _X_TOLERANCE for (xa, _), (xb, _) in zip(a, b, strict=True)
+    )
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
+
+
+def table_rows(page: object) -> dict[str, str | None]:
+    """Map each table line on the page (keyed by its text without whitespace, which is how
+    it is matched against the layout extraction) to its self-labelled rendering, or to None
+    for a header row, which the rendered rows make redundant."""
+    lines = _page_lines(page)
+    rendered: dict[str, str | None] = {}
+    i = 0
+    while i < len(lines):
+        header = lines[i]
+        end = i + 1
+        while (
+            len(header) >= _MIN_COLUMNS and end < len(lines) and _same_columns(header, lines[end])
+        ):
+            end += 1
+        if end - i < 2:  # a header alone is not a table
+            i += 1
+            continue
+        names = [text for _, text in header]
+        rendered[_squash("".join(names))] = None
+        for row in lines[i + 1 : end]:
+            cells = [text for _, text in row]
+            pairs = "; ".join(f"{n} = {v}" for n, v in zip(names[1:], cells[1:], strict=True))
+            rendered[_squash("".join(cells))] = f"{cells[0]}: {pairs}."
+        i = end
+    return rendered
+
+
+def _render_tables(lines: list[str], rows: dict[str, str | None]) -> list[str]:
+    """Swap table lines of the layout extraction for their rendering. Each row becomes its
+    own block (blank lines around it), so a chunk boundary can never split a row from its
+    labels and every row is a citable paragraph."""
+    if not rows:
+        return lines
+    out: list[str] = []
+    for line in lines:
+        key = _squash(line)
+        if key and key in rows:
+            if (text := rows[key]) is not None:
+                out.extend(["", text, ""])
+            continue
+        out.append(line)
+    return out
+
+
 def parse_file(path: Path) -> ParsedDocument:
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -206,8 +289,9 @@ def parse_file(path: Path) -> ParsedDocument:
             # Layout mode keeps the vertical gaps between paragraphs as blank lines, so
             # paragraph boundaries (and therefore locators) survive extraction.
             text = normalize(page.extract_text(extraction_mode="layout") or "")
-            pages.append(text)
-            builder.feed(text.split("\n"), page=number)
+            lines = _render_tables(text.split("\n"), table_rows(page))
+            pages.append("\n".join(lines))
+            builder.feed(lines, page=number)
         blocks = builder.blocks
         mime, raw = "application/pdf", "\n\n".join(pages)
 

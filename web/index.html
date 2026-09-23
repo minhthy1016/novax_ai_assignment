@@ -273,6 +273,7 @@ function renderChat(question, b) {
   badges.push(`<span class="chip">route: ${esc(b.route)}</span>`);
   if (b.abstained) badges.push('<span class="chip warn">abstained</span>');
   if (b.grounded) badges.push('<span class="chip ok">grounded</span>');
+  else if (b.route === "knowledge") badges.push('<span class="chip bad">uncited</span>');
   if (b.model) badges.push(`<span class="chip">${esc(b.model.id)}</span>`);
   if (b.fallback_used) badges.push('<span class="chip warn">fallback used</span>');
   if (b.tool) {
