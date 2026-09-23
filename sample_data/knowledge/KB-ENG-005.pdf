@@ -1,0 +1,155 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 4943 >>
+stream
+BT /F2 8 Tf 1 0 0 1 54.0 752.0 Tm (ACME INTERNAL - ENGINEERING OPERATIONS) Tj ET
+0.4 w 54.0 746.0 m 558.0 746.0 l S
+0.4 w 54.0 58.0 m 558.0 58.0 l S
+BT /F1 8 Tf 1 0 0 1 54.0 46.0 Tm (Confidentiality: Internal. Document KB-ENG-005. Page 1) Tj ET
+BT /F2 16 Tf 1 0 0 1 54.0 720.0 Tm (Service Capacity and On-Call Rate Card 2026) Tj ET
+BT /F1 9 Tf 1 0 0 1 54.0 694.0 Tm (Engineering Operations - reviewed quarterly - effective 1 July 2026) Tj ET
+BT /F2 11 Tf 1 0 0 1 54.0 670.0 Tm (Table 1. Funded capacity by service) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 57.0 652.0 Tm (Service) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 207.0 652.0 Tm (Funded RPS) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 297.0 652.0 Tm (p95 target) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 407.0 652.0 Tm (Scale trigger) Tj ET
+0.8 w 54.0 646.0 m 558.0 646.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 634.0 Tm (checkout-api) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 634.0 Tm (1,200) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 634.0 Tm (180 ms) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 634.0 Tm (sustained 70% for 2 weeks) Tj ET
+0.3 w 54.0 628.0 m 558.0 628.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 616.0 Tm (payment-worker) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 616.0 Tm (400) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 616.0 Tm (900 ms) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 616.0 Tm (queue depth above 5,000) Tj ET
+0.3 w 54.0 610.0 m 558.0 610.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 598.0 Tm (search-api) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 598.0 Tm (2,500) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 598.0 Tm (250 ms) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 598.0 Tm (cluster CPU above 65%) Tj ET
+0.3 w 54.0 592.0 m 558.0 592.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 580.0 Tm (catalogue-api) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 580.0 Tm (3,000) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 580.0 Tm (120 ms) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 580.0 Tm (sustained 75% for 2 weeks) Tj ET
+0.3 w 54.0 574.0 m 558.0 574.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 562.0 Tm (notify-worker) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 562.0 Tm (150) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 562.0 Tm (2,000 ms) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 562.0 Tm (queue depth above 20,000) Tj ET
+0.3 w 54.0 556.0 m 558.0 556.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 544.0 Tm (reporting-batch) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 544.0 Tm (n/a) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 544.0 Tm (n/a) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 544.0 Tm (run time above 90 minutes) Tj ET
+0.3 w 54.0 538.0 m 558.0 538.0 l S
+BT /F1 9.5 Tf 1 0 0 1 54.0 512.0 Tm (This rate card records the capacity limits each) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 499.5 Tm (Engineering service is funded for in 2026, the) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 487.0 Tm (thresholds at which it must be scaled, and the on-) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 474.5 Tm (call cover that applies outside working hours. It is) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 462.0 Tm (reviewed every quarter by the Engineering Manager) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 449.5 Tm (together with Finance. Where a service exceeds its) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 437.0 Tm (funded ceiling for two consecutive weeks, the owning) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 424.5 Tm (team raises a capacity request rather than scaling) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 412.0 Tm (silently.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 387.0 Tm (Capacity figures are steady-state ceilings, not peak) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 374.5 Tm (survivability: a service may briefly exceed its) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 362.0 Tm (ceiling during an incident or a planned migration.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 349.5 Tm (Sustained breach is what the review looks at. The) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 337.0 Tm (p95 latency target in the table is a service) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 324.5 Tm (objective, not an alerting threshold; alerting fires) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 312.0 Tm (at 1.5 times the target for ten consecutive minutes.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 287.0 Tm (On-call cover is organised in two tiers. Tier 1 is) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 274.5 Tm (the owning team's own rota and answers first for its) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 262.0 Tm (services. Tier 2 is the platform rota and is paged) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 249.5 Tm (only when Tier 1 does not acknowledge within the) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 237.0 Tm (stated window, or when an incident spans more than) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 224.5 Tm (one service. Paging Tier 2 directly is permitted for) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 212.0 Tm (SEV1 incidents only.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 187.0 Tm (Cost recovery is internal: each team is charged the) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 174.5 Tm (monthly rate shown for the tier it subscribes to,) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 162.0 Tm (and the charge does not change with the number of) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 149.5 Tm (pages received. A team that cancels Tier 2 cover) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 137.0 Tm (keeps Tier 1 and loses cross-service escalation.) Tj ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 3 0 R >>
+endobj
+5 0 obj
+<< /Length 2755 >>
+stream
+BT /F2 8 Tf 1 0 0 1 54.0 752.0 Tm (ACME INTERNAL - ENGINEERING OPERATIONS) Tj ET
+0.4 w 54.0 746.0 m 558.0 746.0 l S
+0.4 w 54.0 58.0 m 558.0 58.0 l S
+BT /F1 8 Tf 1 0 0 1 54.0 46.0 Tm (Confidentiality: Internal. Document KB-ENG-005. Page 2) Tj ET
+BT /F2 11 Tf 1 0 0 1 54.0 720.0 Tm (Table 2. On-call tiers and charges) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 57.0 702.0 Tm (Tier) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 207.0 702.0 Tm (Hours) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 297.0 702.0 Tm (Acknowledge within) Tj ET
+BT /F2 9.5 Tf 1 0 0 1 407.0 702.0 Tm (Monthly rate \(MYR\)) Tj ET
+0.8 w 54.0 696.0 m 558.0 696.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 684.0 Tm (Tier 1 - owning team) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 684.0 Tm (18:00-08:00 and weekends) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 684.0 Tm (15 minutes) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 684.0 Tm (4,800) Tj ET
+0.3 w 54.0 678.0 m 558.0 678.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 666.0 Tm (Tier 2 - platform) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 666.0 Tm (24/7) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 666.0 Tm (30 minutes) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 666.0 Tm (9,600) Tj ET
+0.3 w 54.0 660.0 m 558.0 660.0 l S
+BT /F1 9.5 Tf 1 0 0 1 57.0 648.0 Tm (Tier 2 - platform \(SEV1\)) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 207.0 648.0 Tm (24/7) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 297.0 648.0 Tm (10 minutes) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 407.0 648.0 Tm (included in Tier 2) Tj ET
+0.3 w 54.0 642.0 m 558.0 642.0 l S
+BT /F1 9.5 Tf 1 0 0 1 54.0 616.0 Tm (Escalation to the database on-call engineer is) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 603.5 Tm (charged to the platform rota, not to the owning) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 591.0 Tm (team, because the database tier is shared. A team) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 578.5 Tm (may request a temporary uplift of its funded RPS for) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 566.0 Tm (a launch; uplifts are approved for at most 30 days) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 553.5 Tm (and revert automatically.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 528.5 Tm (Reporting-batch has no funded RPS because it is a) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 516.0 Tm (scheduled job rather than a request service. Its) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 503.5 Tm (capacity is measured by run time: a run exceeding 90) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 491.0 Tm (minutes triggers a review of the query plan before) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 478.5 Tm (any additional workers are funded.) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 453.5 Tm (Services not listed here are unfunded and run on) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 441.0 Tm (best-effort shared capacity. An unfunded service may) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 428.5 Tm (not declare a SEV1: it must first be added to this) Tj ET
+BT /F1 9.5 Tf 1 0 0 1 54.0 416.0 Tm (rate card at the quarterly review.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Type /Pages /Count 2 /Kids [4 0 R 6 0 R] >>
+endobj
+8 0 obj
+<< /Type /Catalog /Pages 7 0 R >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000000154 00000 n 
+0000005149 00000 n 
+0000005285 00000 n 
+0000008092 00000 n 
+0000008228 00000 n 
+0000008291 00000 n 
+trailer
+<< /Size 9 /Root 8 0 R >>
+startxref
+8340
+%%EOF

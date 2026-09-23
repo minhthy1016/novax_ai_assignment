@@ -12,6 +12,13 @@ Wilson interval and strategies whose intervals overlap are not claimed to differ
 
 Metrics (k = 1, 3, 5):
 * Recall@k  - fraction of a case's evidence spans present in the top-k contexts, averaged.
+
+A fact that lives in a **table cell** has no canonical string form: our extractor renders a
+row as ``checkout-api 1,200 180 ms``, Docling as ``checkout-api, Funded RPS = 1,200``. Those
+cases therefore carry ``evidence_terms`` - a set of terms that must all appear in the chunk -
+so the comparison measures retrieval rather than an extractor's punctuation. The first run of
+this comparison scored Docling 0/5 on the table cases for exactly that reason, which was a
+bug in the gold set, not a finding about Docling.
 * Hit@k     - share of cases where at least one evidence span is present.
 * MRR       - 1 / rank of the first context containing any evidence span.
 * Ctx tok@k - tokens handed to the model for the top-k (distinct contexts), i.e. cost/noise.
@@ -169,6 +176,12 @@ def wilson(successes: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, centre - margin), min(1.0, centre + margin))
 
 
+def _contains(context: str, evidence: list[str], terms: list[list[str]]) -> bool:
+    return any(e in context for e in evidence) or any(
+        all(t in context for t in group) for group in terms
+    )
+
+
 def _norm(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).replace("\u2011", "-").replace("\u2013", "-")
     return " ".join(text.lower().split())
@@ -218,14 +231,17 @@ def evaluate(
             if chunks[i].context not in contexts:
                 contexts.append(chunks[i].context)
         evidence = [_norm(e) for e in case["evidence"]]  # type: ignore[union-attr]
+        terms = [[_norm(t) for t in group] for group in case.get("evidence_terms", [])]  # type: ignore[union-attr]
         first_hit = next(
-            (r for r, ctx in enumerate(contexts, 1) if any(e in _norm(ctx) for e in evidence)), None
+            (r for r, ctx in enumerate(contexts, 1) if _contains(_norm(ctx), evidence, terms)),
+            None,
         )
         totals["mrr"] += 1 / first_hit if first_hit else 0.0
         for k in KS:
             top = " ".join(_norm(c) for c in contexts[:k])
             found = sum(e in top for e in evidence)
-            totals[f"recall@{k}"] += found / len(evidence)
+            found += sum(all(t in top for t in group) for group in terms)
+            totals[f"recall@{k}"] += found / (len(evidence) + len(terms))
             totals[f"hit@{k}"] += 1.0 if found else 0.0
             totals[f"ctx_tokens@{k}"] += sum(estimate_tokens(c) for c in contexts[:k])
         if not first_hit or first_hit > 3:
@@ -266,11 +282,15 @@ def main() -> None:
         )
         for u in users
     }
-    # Gold-set sanity: every evidence span must exist verbatim in its document.
+    # Gold-set sanity: every evidence span must exist verbatim in its document, and every
+    # term of a table fact must be findable too.
     by_key = {d.meta.document_id: _norm(" ".join(b.text for b in d.blocks)) for d in docs}
     for c in cases:
         for e in c["evidence"]:
             assert _norm(e) in by_key[c["expected_doc"]], f"{c['id']}: evidence not in doc: {e}"
+        for group in c.get("evidence_terms", []):
+            for term in group:
+                assert _norm(term) in by_key[c["expected_doc"]], f"{c['id']}: term missing: {term}"
 
     strategies: dict[str, list[EvalChunk]] = {
         "structural-64 (day-3 baseline)": _ours(docs, lambda d: chunkers.structural(d, 64)),

@@ -57,14 +57,14 @@ alternatives and the measurement behind each choice are written down.
 ## Task 5 - Evaluation
 | ID | Requirement | Implementation | Evidence | Status |
 |---|---|---|---|---|
-| T5.1 | ≥30 cases covering all 7 categories | | | ⬜ |
-| T5.2 | Answer correctness | | | ⬜ |
-| T5.3 | Retrieval relevance (rank-sensitive) | | | ⬜ |
-| T5.4 | Citation correctness | | | ⬜ |
-| T5.5 | Hallucination / abstention | | | ⬜ |
-| T5.6 | Tool accuracy | | | ⬜ |
-| T5.7 | Latency + provider timing | | | ⬜ |
-| T5.8 | Tokens + estimated cost | | | ⬜ |
+| T5.1 | ≥30 cases covering all 7 categories | `evaluation/cases.jsonl`: **70 cases** across answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure, each with a named actor, expected sources, forbidden sources, expected tool and reference facts | `test_the_suite_covers_every_category_the_brief_names`; `make eval` report in `evaluation/reports/evaluation.md` | ✅ |
+| T5.2 | Answer correctness | LLM judge, one verdict per reference fact (`evaluation/judge.py`), different model family, called outside the pipeline (D-50) | `evaluation/reports/evaluation.md` headline table; harness graded by `tests/unit/test_eval_harness.py` | ✅ |
+| T5.3 | Retrieval relevance (rank-sensitive) | rank of `expected_sources` in the caller's own `/api/search`, reported as top-4 hit rate and MRR | `evaluation/reports/evaluation.md`; `evaluation/retrieval_api_eval.py` | ✅ |
+| T5.4 | Citation correctness | every cited source must have been retrieved, and the expected source must be cited; forbidden sources must appear in neither | `evaluation/reports/evaluation.md` (citations valid / expected cited / isolation) | ✅ |
+| T5.5 | Hallucination / abstention | deterministic abstention check per case + `must_not_contain` guards + the judge's untraceable claims, each printed in the report | `evaluation/reports/evaluation.md`; `test_a_dead_provider_must_not_produce_prose` | ✅ |
+| T5.6 | Tool accuracy | expected tool, expected arguments and expected status (ok / denied / pending) compared exactly, no model involved | `evaluation/reports/evaluation.md`; `test_sensitive_and_denied_outcomes_are_graded_exactly` | ✅ |
+| T5.7 | Latency + provider timing | end-to-end p50/p95 per run and mean provider time per case, from the attempt records | `evaluation/reports/evaluation.md` cost-and-latency table | ✅ |
+| T5.8 | Tokens + estimated cost | prompt/completion tokens and estimated cost per case and per category, from the usage the gateway records | `evaluation/reports/evaluation.md` cost-and-latency table | ✅ |
 
 ## Task 6 - Security
 | ID | Requirement | Implementation | Evidence | Status |

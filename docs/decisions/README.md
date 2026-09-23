@@ -40,3 +40,4 @@ Why the system is built this way. The system overview lives in
 | [D-61](D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, two budgets, fail open | Operations |
 | [D-62](D-62-console-ui-is-a-client.md) | The console is a client, and it lives only in development | Scope |
 | [D-63](D-63-tickets-are-operational-data.md) | A ticket is operational data: read by a tool, never from the documents | Agent |
+| [D-50](D-50-evaluation-design.md) | Evaluation: deterministic for rules, LLM judge for prose | Evaluation |
