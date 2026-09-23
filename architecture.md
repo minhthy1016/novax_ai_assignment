@@ -171,7 +171,7 @@ Everything lives in [`evaluation/`](evaluation/); the reasoning is [D-50](docs/d
 
 | Suite | What it answers | Command |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 70 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 71 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
 | `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`), per-citation support ("does this passage say this sentence?") and untraceable claims - from a **different model family**, called outside the pipeline, and required to quote the answer before it may call a fact contradicted | part of `make eval` |
 | `chunking_eval.py` | 11 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) + `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |

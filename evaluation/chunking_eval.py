@@ -14,11 +14,11 @@ Metrics (k = 1, 3, 5):
 * Recall@k  - fraction of a case's evidence spans present in the top-k contexts, averaged.
 
 A fact that lives in a **table cell** has no canonical string form: our extractor renders a
-row as ``checkout-api 1,200 180 ms``, Docling as ``checkout-api, Funded RPS = 1,200``. Those
-cases therefore carry ``evidence_terms`` - a set of terms that must all appear in the chunk -
-so the comparison measures retrieval rather than an extractor's punctuation. The first run of
-this comparison scored Docling 0/5 on the table cases for exactly that reason, which was a
-bug in the gold set, not a finding about Docling.
+row as ``checkout-api: Funded RPS = 1,200; ...``, Docling as ``checkout-api, Funded RPS =
+1,200``. Those cases therefore carry ``evidence_terms`` - a set of terms that must all
+appear in the chunk - so the comparison measures retrieval rather than an extractor's
+punctuation. The first run of this comparison scored Docling 0/5 on the table cases for
+exactly that reason, which was a bug in the gold set, not a finding about Docling.
 * Hit@k     - share of cases where at least one evidence span is present.
 * MRR       - 1 / rank of the first context containing any evidence span.
 * Ctx tok@k - tokens handed to the model for the top-k (distinct contexts), i.e. cost/noise.

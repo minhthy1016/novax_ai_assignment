@@ -157,10 +157,8 @@ def outcome_checks(case: dict[str, Any], body: dict[str, Any]) -> dict[str, tupl
         checks["tool_arguments"] = (matched, f"wanted {wanted_args}, got {got or '{}'}")
 
     for phrase in case.get("must_not_contain", []):
-        checks[f"absent:{phrase[:28]}"] = (
-            phrase.lower() not in str(body.get("content", "")).lower(),
-            "appeared in the answer",
-        )
+        held = phrase.lower() not in str(body.get("content", "")).lower()
+        checks[f"absent:{phrase[:28]}"] = (held, "absent" if held else "appeared in the answer")
     return checks
 
 
@@ -237,11 +235,14 @@ def run_case(
             cited <= retrieved,
             f"cited {sorted(cited)}, retrieved {sorted(retrieved)}",
         )
-        if wanted := case.get("expected_sources"):
-            result.checks["cited_expected"] = (
-                bool(cited & set(wanted)),
-                f"cited {sorted(cited)}, wanted one of {wanted}",
-            )
+    # An answer (not an abstention) to a question with an expected source must cite it; an
+    # uncited answer used to skip this check entirely and pass.
+    wanted = case.get("expected_sources")
+    if wanted and (cited or (body.get("content") and not body.get("abstained"))):
+        result.checks["cited_expected"] = (
+            bool(cited & set(wanted)),
+            f"cited {sorted(cited) or 'nothing'}, wanted one of {wanted}",
+        )
     for forbidden in case.get("forbidden_sources", []):
         result.checks[f"not_cited:{forbidden}"] = (
             forbidden not in cited,
@@ -320,9 +321,9 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         by_category[r.category].append(r)
 
     def axis(name: str) -> tuple[float, int]:
-        applicable = [r for r in results for k in r.checks if k.startswith(name)]
-        ok = sum(all(v for k, (v, _) in r.checks.items() if k.startswith(name)) for r in applicable)
-        return ok, len(applicable)
+        """One count per check: a case with two guards contributes two, each scored alone."""
+        verdicts = [v for r in results for k, (v, _) in r.checks.items() if k.startswith(name)]
+        return sum(verdicts), len(verdicts)
 
     facts = [f for r in results for f in r.facts]
     supported = sum(f["verdict"] == "supported" for f in facts)

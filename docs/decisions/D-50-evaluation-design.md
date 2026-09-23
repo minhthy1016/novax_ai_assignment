@@ -46,7 +46,7 @@ isolation, authorization and retrieval scope are measured on the same run as ans
 rather than in a separate security test that a reader has to correlate by hand.
 
 **8. Reported with intervals, and with the failures quoted.** Every rate carries a 95%
-Wilson interval; with 70 cases one case moves a rate by ~0.014 and a per-category rate by far
+Wilson interval; with 71 cases one case moves a rate by ~0.014 and a per-category rate by far
 more. Each failing case is printed with its checks and its answer, so the report can be
 audited rather than believed.
 

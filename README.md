@@ -241,7 +241,7 @@ Arguments, results and logs are redacted; provider keys live only in environment
 | Document upload by authorized users | ✅ |
 | Persistent memory (inspect and delete) | ✅ |
 | Per-caller rate limiting on model-backed routes | ✅ |
-| Evaluation suite (70 cases, LLM judge, control baseline) | ✅ [report](evaluation/reports/evaluation.md) · [analysis](evaluation/reports/analysis.md) |
+| Evaluation suite (71 cases, LLM judge, control baseline) | ✅ [report](evaluation/reports/evaluation.md) · [analysis](evaluation/reports/analysis.md) |
 | Production SSO / OIDC | 🟡 dev token issuer stands in |
 | Scale proposal (5k employees, 1M documents, GPU cluster) | ✅ [D-60](docs/decisions/D-60-scale-proposal-aws.md), derived from measured numbers - not load-tested |
 | AWS deployment itself | 🟡 designed, not built: the repository deploys with Docker Compose |
@@ -547,7 +547,7 @@ The gain comes from heading-aware parents, not from small children.
 
 ## Evaluation
 
-70 cases, each one employee asking one question, across the eight categories the brief
+71 cases, each one employee asking one question, across the eight categories the brief
 names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
 `make eval-fast` for the deterministic axes only. Latest run:
 [`evaluation/reports/evaluation.md`](evaluation/reports/evaluation.md), read by hand in
@@ -573,17 +573,17 @@ confidential answer never sends it off the machine.
 
 | Axis | Result (95% CI) |
 |---|---|
-| Cases fully correct | 63/70 = 0.900 (0.81–0.95) |
+| Cases fully correct | 64/71 = 0.901 (0.81–0.95) — 67/71 read by hand |
 | Tool accuracy — choice, arguments, allowed/denied/pending | 30/30 = 1.000 (0.89–1.00) |
 | Abstention and refusal | 12/12 = 1.000 (0.76–1.00) |
 | Department isolation held | 10/10 = 1.000 (0.72–1.00) |
-| Citations valid (every cited source was retrieved) | 32/32 = 1.000 (0.89–1.00) |
-| Expected source cited | 31/31 = 1.000 (0.89–1.00) |
-| **Citation supports the exact claim** (judged, per citation) | 22/25 = 0.880 (0.70–0.96) |
-| Retrieval: expected source in top-4 · MRR | 37/38 = 0.974 · 0.908 |
-| Hallucination guards (`must_not_contain`) | 29/29 = 1.000 (0.88–1.00) |
-| Judge: reference facts supported | 31/38 = 0.816 (0.67–0.91) |
-| End-to-end p50 / p95 · mean tokens per case | 1.17s / 2.26s · 438 |
+| Citations valid (every cited source was retrieved) | 37/37 = 1.000 (0.91–1.00) |
+| Expected source cited (an uncited answer counts as a miss) | 36/37 = 0.973 (0.86–1.00) |
+| **Citation supports the exact claim** (judged, per citation) | 33/39 = 0.846 (0.70–0.93) |
+| Retrieval: expected source in top-4 · MRR | 37/39 = 0.949 · 0.936 |
+| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a refusal that names "system prompts" |
+| Judge: reference facts supported | 34/39 = 0.872 (0.73–0.94) |
+| End-to-end p50 / p95 · mean tokens per case | 0.97s / 2.28s · 490 |
 
 ### What the brief asks for, and what measures it
 
@@ -597,15 +597,17 @@ confidential answer never sends it off the machine.
 | Performance | end-to-end latency and model/provider timing | p50 / p95 end-to-end, mean provider time per case from the attempt records |
 | Efficiency | token or usage count and estimated cost | prompt/completion tokens and estimated cost, per case and per category |
 
-**The six failures, read by hand: four real, two judge errors.** The most interesting is
-`L04` — asked how fast Tier 2 must acknowledge a **SEV1**, the answer said 30 minutes, which
-is the row *above* the right one in a wide table. The layout-heavy PDF was added to this
-corpus precisely to find that class of error, and it did. The other real ones are an
-abstention on an answerable question and two cases where the assistant declines rather than
-correcting a false premise. Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
+**The seven failures, read by hand: four real, two judge errors, one guard false
+positive.** The layout-heavy PDF was added to find table-reading errors, and it did: `L04`,
+asked how fast Tier 2 must acknowledge a **SEV1**, answered 30 minutes — the row *above* the
+right one. The parser now writes every table row with its own labels (`Tier 2 - platform
+(SEV1): Acknowledge within = 10 minutes; ...`, D-20) and L04 passes. The real failures left
+are `L03`, a correct fact credited to the wrong source; `M02`, which reports what the sources
+do not say instead of correcting a false premise; and two abstentions on false premises.
+Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
 
-**The control.** The same model with no retrieval and no policy states 17% of the reference
-facts (vs 84% through the pipeline), produces no citations, and answers **5 of 5** questions
+**The control.** The same model with no retrieval and no policy states 16% of the reference
+facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions
 the caller had no right to have answered. The point is not that it is bad at facts — it is
 that nothing it says can be checked, and it has no notion of who is asking.
 
@@ -692,7 +694,7 @@ Dockerfile             one image, used by both the API and the worker
 Honest list of what this build does **not** do, or does only partly. Each one is real and
 checkable in the code.
 
-**What the evaluation found (70 cases, read by hand in `evaluation/reports/analysis.md`)**
+**What the evaluation found (71 cases, read by hand in `evaluation/reports/analysis.md`)**
 - **Wide tables are read by the wrong row.** Asked how fast Tier 2 on-call must acknowledge
   a SEV1, the answer gave the value from the row above (30 minutes instead of 10). Retrieval
   was right; the answer step matched the first row label it saw.
@@ -700,6 +702,12 @@ checkable in the code.
   lasted three hours…" gets "I couldn't find this" rather than "it was 18 minutes". Safe,
   but a colleague would correct you.
 - **One answerable question was abstained on** (API-tier patching, from a PDF).
+- **Partial answers cost some precision.** Two-part questions where the documents cover one
+  part now get that part, cited, plus a note on what is not covered (K18). A 3B model
+  sometimes adds that note to questions it answered in full (K08, L04 in the latest run).
+- **A correct fact can be credited to the wrong source** (L03): every citation resolves to a
+  source the caller was given, but a 3B model sometimes picks a neighbour that shares the
+  vocabulary. The per-citation judge catches it; nothing at runtime does yet.
 - **The judge is not the final word**: it twice marked a correct answer as contradicted
   because the answer opened with "No, …". Every failing case prints its answer so a reader
   can overrule the judge; scored by hand the run is 66/70 rather than 64/70.

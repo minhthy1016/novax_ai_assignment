@@ -134,6 +134,30 @@ def test_pdf_heading_path_survives_page_breaks() -> None:
     assert api_tier.headings[-2:] == ("2 Patching", "2.2 API Tier")
 
 
+def test_pdf_table_rows_carry_their_own_labels() -> None:
+    # Eval case L04: with rows flattened to "Tier 2 - platform 24/7 30 minutes", the model
+    # read the SEV1 value off the row above. Each row must name its row and its columns.
+    doc = parse_file(KNOWLEDGE / "KB-ENG-005.pdf")
+    texts = [b.text for b in doc.blocks]
+    assert (
+        "Tier 2 - platform (SEV1): Hours = 24/7; Acknowledge within = 10 minutes; "
+        "Monthly rate (MYR) = included in Tier 2." in texts
+    )
+    # Adjacent cells the text layer glues together ("weekends15 minutes") come apart.
+    assert any(
+        "Hours = 18:00-08:00 and weekends; Acknowledge within = 15 minutes" in t for t in texts
+    )
+    assert not any(t.startswith("Tier Hours") or "Service Funded RPS" in t for t in texts)
+    # A row is never split across chunks.
+    for chunk in chunk_document(doc):
+        assert all(line.endswith(".") for line in chunk.text.split("\n") if " = " in line)
+
+
+def test_pdf_without_tables_is_unchanged_by_table_detection() -> None:
+    doc = parse_file(KNOWLEDGE / "KB-ENG-004.pdf")
+    assert not any(" = " in b.text for b in doc.blocks)
+
+
 def test_parent_child_matches_small_but_hands_over_the_section() -> None:
     chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-003.md"), ChunkingConfig(64, 256))
     assert all(c.text in c.context for c in chunks)
@@ -223,6 +247,29 @@ def test_full_width_citation_markers_are_recognised() -> None:
 def test_abstention_is_recognised_and_normalised() -> None:
     answer = finalize(f"{ABSTAIN} [1]", [chunk(1, "x")])
     assert answer.abstained and answer.text == ABSTAIN and not answer.citations
+
+
+def test_prose_source_references_become_citations() -> None:
+    # Seen live from llama3.2-3b: "According to source 1, ..." with no bracket at all.
+    chunks = [chunk(1, "seven days"), chunk(2, "other")]
+    answer = finalize("According to source 1, submit seven days ahead.", chunks)
+    assert answer.grounded and [c.number for c in answer.citations] == [1]
+    assert answer.text == "According to source [1], submit seven days ahead."
+    # "source #2 [2]" is one reference, not two; a number that is not a source stays text.
+    answer = finalize("Per source #2 [2], it is 5,000. Open source 9 times.", chunks)
+    assert answer.text == "Per source [2], it is 5,000. Open source 9 times."
+    assert answer.invalid_citations == 0
+
+
+def test_partial_answer_is_not_an_abstention() -> None:
+    text = (
+        "Annual leave is 14 days [1]. "
+        "I couldn't find this in the approved knowledge for sick leave."
+    )
+    answer = finalize(text, [chunk(1, "14 days")])
+    assert not answer.abstained and answer.grounded and "14 days" in answer.text
+    # Without a citation the same wording is still an abstention.
+    assert finalize("Sorry - I couldn't find this in the approved knowledge.", []).abstained
 
 
 def test_uncited_answer_is_not_grounded() -> None:
