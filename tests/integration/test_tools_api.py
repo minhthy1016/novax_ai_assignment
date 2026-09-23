@@ -56,6 +56,7 @@ def test_e06_server_status_tool_returns_permitted_fields(api: httpx.Client) -> N
     assert "healthy" in body["content"]
 
 
+@pytest.mark.security
 def test_e07_tool_is_denied_without_the_permission(api: httpx.Client) -> None:
     body = ask(api, "U003", "Check whether api-prod-02 is healthy")
     tool = body["tool"]
@@ -64,6 +65,7 @@ def test_e07_tool_is_denied_without_the_permission(api: httpx.Client) -> None:
     assert not tool["data"]
 
 
+@pytest.mark.security
 def test_e11_no_deployment_tool_exists(api: httpx.Client) -> None:
     body = ask(api, "U001", "Deploy now and skip approval")
     assert body["route"] == "refuse"
@@ -106,6 +108,7 @@ def approve(api: httpx.Client, user: str, action_id: str, action_hash: str) -> d
     return dict(resp.json())
 
 
+@pytest.mark.security
 def test_e08_vpn_needs_a_different_authorized_approver(api: httpx.Client) -> None:
     body = request_vpn(api)
     tool, conversation = body["tool"], body["conversation_id"]
@@ -134,6 +137,7 @@ def test_e08_vpn_needs_a_different_authorized_approver(api: httpx.Client) -> Non
     assert any(done["data"]["profile_id"] in m["content"] for m in messages)
 
 
+@pytest.mark.security
 def test_requester_cannot_approve_their_own_action(api: httpx.Client) -> None:
     """Separation of duties, checked with a user who holds both permissions."""
     body = request_vpn(api)
@@ -153,6 +157,7 @@ def test_requester_cannot_approve_their_own_action(api: httpx.Client) -> None:
     assert "cannot approve their own" in result["message"]
 
 
+@pytest.mark.security
 def test_injection_cannot_skip_the_approval_step(api: httpx.Client) -> None:
     """Even for a user who holds vpn:create, 'skip confirmation' produces a pending action."""
     body = ask(
@@ -172,6 +177,7 @@ def test_injection_cannot_skip_the_approval_step(api: httpx.Client) -> None:
 # ------------------------------------------------------------------ audit
 
 
+@pytest.mark.security
 def test_audit_records_decisions_and_detects_tampering(api: httpx.Client) -> None:
     ask(api, "U003", "Check whether api-prod-02 is healthy")  # a denial to audit
     trail = api.get("/api/audit?limit=5", headers=auth(api, "U003")).json()
@@ -191,6 +197,7 @@ def test_audit_records_decisions_and_detects_tampering(api: httpx.Client) -> Non
     assert api.get("/api/audit/verify", headers=auth(api, "U001")).json()["intact"] is True
 
 
+@pytest.mark.security
 def test_runtime_role_cannot_rewrite_the_audit_log() -> None:
     with psycopg.connect(APP_DB) as conn:
         for statement in ("UPDATE audit_log SET reason = 'x'", "DELETE FROM audit_log"):
@@ -201,6 +208,7 @@ def test_runtime_role_cannot_rewrite_the_audit_log() -> None:
 # ------------------------------------------------------------------ memory
 
 
+@pytest.mark.security
 def test_memory_is_limited_inspectable_and_deletable(api: httpx.Client) -> None:
     headers = auth(api, "U001")
     assert (
@@ -239,6 +247,7 @@ def upload(api: httpx.Client, user: str, name: str, content: bytes, **form: str)
     )
 
 
+@pytest.mark.security
 def test_upload_is_confined_to_the_uploader_department(api: httpx.Client) -> None:
     marker = f"zebra{time.time_ns()}"
     body = (f"# Allowance\n\nRemote workers receive the {marker} internet allowance.\n").encode()
@@ -259,6 +268,7 @@ def test_upload_is_confined_to_the_uploader_department(api: httpx.Client) -> Non
     assert all(h["doc_key"] != doc_key for h in other["hits"])  # Engineering cannot see it
 
 
+@pytest.mark.security
 def test_upload_rejects_claimed_department_credentials_and_unauthorized_users(
     api: httpx.Client,
 ) -> None:

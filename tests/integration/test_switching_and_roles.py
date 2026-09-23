@@ -75,6 +75,7 @@ def test_models_endpoint_exposes_the_three_model_picker(
     assert sum(flags.values()) == 3
 
 
+@pytest.mark.security
 def test_token_is_rejected_after_role_change(api: httpx.Client) -> None:
     token = token_for(api, "U002")
     auth = {"Authorization": f"Bearer {token}"}
@@ -93,6 +94,7 @@ def test_token_is_rejected_after_role_change(api: httpx.Client) -> None:
             conn.execute("UPDATE users SET role = %s WHERE id = 'U002'", (original,))
 
 
+@pytest.mark.security
 def test_token_is_rejected_after_deactivation(api: httpx.Client) -> None:
     auth = {"Authorization": f"Bearer {token_for(api, 'U006')}"}
     with psycopg.connect(DB, autocommit=True) as conn:

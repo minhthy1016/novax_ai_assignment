@@ -72,7 +72,7 @@ command demonstrates it — "the code exists" is not enough.
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |
 | T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input` | 🟡 rate limiting day 4 |
 | T6.6 | Tamper-aware audit + redaction | hash-chained `audit_log`, append-only for the runtime role, redacted arguments/results (D-32); tracebacks no longer log local variables | `test_audit_records_decisions_and_detects_tampering`, `test_runtime_role_cannot_rewrite_the_audit_log`, `test_audit_redacts_secret_like_values` | ✅ |
-| T6.7 | Tests: indirect injection, cross-department leakage | | | ⬜ |
+| T6.7 | Tests: indirect injection, cross-department leakage | 91 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
 
 ## Task 7 - Deployment
 | ID | Requirement | Implementation | Evidence | Status |

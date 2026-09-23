@@ -46,7 +46,16 @@ test: ## Unit tests (no services needed)
 test-integration: ## Integration tests (needs `make up`)
 	uv run pytest -m integration
 
+test-security: ## Security tests: authz, isolation, injection, audit, egress (needs `make up`)
+	uv run pytest -m security
+
+test-eval: ## Evaluation: gold retrieval set through the running API (needs `make up` + `make ingest`)
+	uv run python -m evaluation.retrieval_api_eval
+
+test-all: ## Everything (needs `make up` + `make ingest`)
+	uv run pytest
+
 logs: ## Tail API logs
 	$(COMPOSE) logs -f api
 
-.PHONY: help install up down reset migrate seed ingest ingest-inline jobs lint fmt test test-integration logs
+.PHONY: help install up down reset migrate seed ingest ingest-inline jobs lint fmt test test-integration test-security test-eval test-all logs

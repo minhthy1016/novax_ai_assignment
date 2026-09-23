@@ -47,6 +47,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: needs the docker compose stack (postgres + redis)",
+    "security: authorization, isolation, injection, audit integrity and data-egress tests",
 ]
 
 [tool.ruff]

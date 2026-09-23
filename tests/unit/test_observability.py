@@ -14,12 +14,14 @@ def test_valid_incoming_request_id_is_kept() -> None:
     "bad",
     [None, "", "short", "has space in it", "inject\nfake=log", "x" * 65, 'evil"quote123'],
 )
+@pytest.mark.security
 def test_unsafe_request_id_is_replaced(bad: str | None) -> None:
     rid = resolve_request_id(bad)
     assert rid != bad
     assert len(rid) == 32
 
 
+@pytest.mark.security
 def test_redaction_masks_secret_like_keys() -> None:
     event = {
         "event": "x",

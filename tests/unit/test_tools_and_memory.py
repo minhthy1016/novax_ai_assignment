@@ -21,6 +21,9 @@ from opsassist.providers.mock import default_responder
 from opsassist.tools.executor import action_hash, authorize, visible_server_fields
 from opsassist.tools.registry import TOOLS, CreateVpnProfileArgs, describe_for_model
 
+# Tool contracts, permissions, audit integrity, memory and upload rules.
+pytestmark = pytest.mark.security
+
 
 def principal(user_id: str, department: str, *permissions: str) -> Principal:
     return Principal(
