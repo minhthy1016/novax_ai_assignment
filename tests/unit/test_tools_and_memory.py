@@ -319,6 +319,7 @@ def test_context_classification_is_the_most_sensitive_chunk() -> None:
             department="hr",
             classification=classification,
             locator="¶1",
+            parent_id=("doc-1", 0),
             content="c",
             context="c",
             doc_updated_at="2026-01-01",

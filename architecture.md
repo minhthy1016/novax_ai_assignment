@@ -250,8 +250,21 @@ decision → consequences.
   scanned PDFs, tables and complex layouts its layout model is the right tool (§6).
 - **Parent-child mechanics:** children are packed to ~64 tokens inside a section; the section
   (≤256 tokens, never crossing a heading) is stored as `context`. The full heading path is
-  prepended to what is embedded. Changing the chunker changes the content hash, so documents
-  are re-indexed rather than silently mixing chunkings.
+  prepended to what is embedded. Each child records `parent_index`, so
+  **(document version, parent_index) is the parent's identity** and retrieval collapses
+  siblings by that identifier rather than by the locator string, which is display text.
+  Changing the chunker changes the content hash, so documents are re-indexed rather than
+  silently mixing chunkings.
+- **Child-size ablation (32 / 64 / 96 / 128 tokens, parent fixed at 256):** in hybrid mode all
+  four score identically (Recall@1 0.971, 95% CI 0.85-0.99); vector-only favours 32 slightly
+  (0.912 vs 0.882) but the intervals overlap almost completely. **The gain came from
+  heading-aware parents, not from how small the child is.** 64 is kept: same metrics as 32
+  with ~20% fewer rows to embed and store.
+- **What the numbers do not support:** with 34 cases a single case is ~0.03, so differences
+  below roughly three cases are not distinguishable. The claim this evaluation supports is
+  "heading-aware parent-child beats page-based and small structural chunking", not "64 is the
+  optimal child size" or "we beat Docling in general" - Docling's layout strengths (tables,
+  multi-column, scans) are not represented in this corpus yet.
 - **Embedding model: `nomic-embed-text` via Ollama (768-d, local)** with its task prefixes
   (`search_document:` / `search_query:`). Documents never leave the machine (required for
   confidential material, D-15), zero marginal cost, 768 dims fit pgvector HNSW. NIM
@@ -280,6 +293,12 @@ decision → consequences.
   without any model call. Isolation never depends on this gate.
 - **Through the live API** (`evaluation/retrieval_api_eval.py`; RLS, gate, dedupe, top-4):
   recall@1 0.941, recall@3 1.000, MRR 0.961.
+- **Answer-level** (`evaluation/answer_eval.py`, local `llama3.2-3b`, 34 answerable + 6
+  must-abstain cases): citation accuracy 0.912 (95% CI 0.77-0.97), citation validity 0.912,
+  every fact present in 0.882 of answers (mean coverage 0.939), wrongly abstained 0/34,
+  abstained correctly 6/6. The three citation misses are answers that stated the right fact
+  without a marker - a small-model behaviour. Fact coverage is lexical and under-credits
+  paraphrase; an LLM judge per claim is the day-5 extension.
 - **Reranking:** no cross-encoder. RRF already fuses two signals and the candidate sets are
   small; recall@3 is 1.000 through the API. At the 1M-document scale a cross-encoder over the
   top ~50 is proposed (§6).

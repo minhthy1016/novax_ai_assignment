@@ -49,8 +49,9 @@ test-integration: ## Integration tests (needs `make up`)
 test-security: ## Security tests: authz, isolation, injection, audit, egress (needs `make up`)
 	uv run pytest -m security
 
-test-eval: ## Evaluation: gold retrieval set through the running API (needs `make up` + `make ingest`)
+test-eval: ## Evaluation: retrieval + answer quality through the running API
 	uv run python -m evaluation.retrieval_api_eval
+	uv run python -m evaluation.answer_eval --model ollama/llama3.2-3b
 
 test-all: ## Everything (needs `make up` + `make ingest`)
 	uv run pytest

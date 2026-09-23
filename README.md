@@ -447,19 +447,34 @@ type and latency only.
   `Incident Response Runbook (KB-ENG-003 v1, §Service playbooks › Payment API ¶13–14)`. If
   nothing relevant is found the assistant says so, without calling a model.
 - Confidential documents go into a separate index and are answered by local models only.
-- Chunking is parent-child: ~64-token children are matched, the whole section (≤256 tokens)
-  is given to the model. It was chosen against 7 alternatives, including per-page chunks and
-  Docling's HybridChunker (`evaluation/reports/chunking.md`); the alternatives live in
+- Chunking is parent-child: **retrieve narrowly, reason broadly, cite precisely.** ~64-token
+  children are embedded and matched; the whole section (≤256 tokens, never crossing a
+  heading) is what the model reads; siblings are collapsed by parent identity so top-K means
+  K distinct sections. Chosen against 7 alternatives including per-page and Docling's
+  HybridChunker (`evaluation/reports/chunking.md`); the alternatives live in
   `evaluation/chunkers.py`.
 
 ```bash
-uv run python -m evaluation.chunking_eval            # strategy comparison -> evaluation/reports/chunking.md
+uv run python -m evaluation.chunking_eval            # 10 strategies incl. child-size ablation
 uv run python -m evaluation.relevance_calibration    # relevance-gate calibration
-uv run python -m evaluation.retrieval_api_eval       # gold set through the running API
+uv run python -m evaluation.retrieval_api_eval       # retrieval through the running API
+uv run python -m evaluation.answer_eval              # citations, facts, abstention
 ```
 
-Current numbers (34 gold questions): through the live API recall@1 0.941, recall@3 1.000,
-MRR 0.961.
+Current numbers on the 34-case gold set (+6 must-abstain cases), with 95% Wilson intervals
+because one case moves a rate by ~0.03:
+
+| Metric | Value |
+|---|---|
+| Retrieval recall@1 / recall@3 / MRR (live API) | 0.941 / 1.000 / 0.961 |
+| Citation accuracy (local `llama3.2-3b`) | 0.912 (CI 0.77-0.97) |
+| Citation validity — every cited source was retrieved | 0.912 (CI 0.77-0.97) |
+| Answers containing every gold fact / mean coverage | 0.882 / 0.939 |
+| Wrongly abstained on answerable questions | 0/34 |
+| Correctly abstained when out of scope | 6/6 |
+
+Child size barely matters: 32, 64, 96 and 128 tokens all score Recall@1 0.971 in hybrid mode.
+The gain comes from heading-aware parents, not from small children.
 
 ## Tests
 
@@ -555,7 +570,11 @@ checkable in the code.
 - Citations name the parent section; the exact matched passage is in the snippet.
 - Model wording varies between runs: in two live runs of E10, one answer opened with "No,"
   where the source only says "not confirmed".
-- The gold set has 34 cases, so a single case moves a metric by about 0.03.
+- The gold set has 34 cases, so a single case moves a metric by about 0.03; differences
+  below roughly three cases are not distinguishable, and the Docling comparison is fair only
+  for simple layouts so far.
+- Fact coverage is measured lexically, so it under-credits paraphrase; an LLM judge per
+  claim is day-5 work.
 
 **Knowledge and uploads**
 - Uploads accept Markdown, plain text and PDF (5 MB), scanned for credentials; there is no

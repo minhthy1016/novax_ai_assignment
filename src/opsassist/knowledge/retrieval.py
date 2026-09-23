@@ -40,6 +40,10 @@ from opsassist.policy.access import AccessScope
 RRF_K = 60
 
 
+def _as_int(value: object) -> int | None:
+    return int(str(value)) if value is not None else None
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievedChunk:
     chunk_id: int
@@ -50,6 +54,7 @@ class RetrievedChunk:
     department: str
     classification: str
     locator: str
+    parent_id: tuple[str, int | None]  # (document version, section) - the parent's identity
     content: str  # the matched passage (cited as the snippet)
     context: str  # the section handed to the model
     doc_updated_at: str
@@ -81,6 +86,7 @@ class _Candidate:
             department=str(r["department"]),
             classification=str(r["classification"]),
             locator=str(r["locator"]),
+            parent_id=(str(r["document_id"]), _as_int(r["parent_index"])),
             content=str(r["content"]),
             context=str(r["context"]),
             doc_updated_at=str(r["doc_updated_at"]),
@@ -135,7 +141,8 @@ def _candidate_sql(table: str, acl_sql: str) -> tuple[str, str]:
         raise ValueError(f"unknown chunk table {table!r}")
     base = f"""
         SELECT c.id, c.doc_key, c.version, d.title, c.department, c.classification,
-               c.locator, c.content, coalesce(c.context, c.content) AS context,
+               c.document_id, c.parent_index, c.locator, c.content,
+               coalesce(c.context, c.content) AS context,
                d.doc_updated_at, {{score}} AS score
         FROM {table} c JOIN documents d ON d.id = c.document_id
         WHERE c.is_active AND c.embedding_model = :model AND ({acl_sql}) {{extra}}
@@ -224,10 +231,11 @@ async def retrieve(
         kept.append(cand.to_chunk())
     kept.sort(key=lambda c: c.score, reverse=True)
     # Collapse children of the same parent section: keep the best-scoring match per section.
-    seen: set[tuple[str, str, int, str]] = set()
+    # The key is the parent's identity, not its locator (locators are display text).
+    seen: set[tuple[str, str, int | None, str]] = set()
     distinct: list[RetrievedChunk] = []
     for c in kept:
-        key = (c.table, c.doc_key, c.version, c.locator)
+        key = (c.table, *c.parent_id, c.locator if c.parent_id[1] is None else "")
         if key not in seen:
             seen.add(key)
             distinct.append(c)

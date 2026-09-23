@@ -200,6 +200,7 @@ class _ChunkColumns:
     department: Mapped[str] = mapped_column(Text)
     classification: Mapped[str] = mapped_column(Text)
     chunk_index: Mapped[int]
+    parent_index: Mapped[int | None]  # identity of the parent section (with document_id)
     locator: Mapped[str] = mapped_column(Text)
     section: Mapped[str | None] = mapped_column(Text)
     page: Mapped[int | None]

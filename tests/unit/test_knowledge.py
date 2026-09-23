@@ -186,6 +186,7 @@ def chunk(n: int, content: str, doc_key: str = "KB-ENG-001") -> RetrievedChunk:
         department="engineering",
         classification="internal",
         locator=f"¶{n}",
+        parent_id=("doc-1", 0),
         content=content,
         context=content,
         doc_updated_at="2026-08-30",
@@ -266,3 +267,20 @@ def test_partial_tool_payloads_do_not_break_rendering() -> None:
     )
     assert "INC-1042" in text and "not" in text.lower()
     assert "severity" not in describe_tool_result("create_support_ticket", {"ticket_id": "INC-1"})
+
+
+def test_children_of_one_section_share_a_parent_identity() -> None:
+    """Siblings are collapsed at retrieval by (document, parent_index) - an identifier,
+    not the locator string, which is display text."""
+    chunks = chunk_document(parse_file(KNOWLEDGE / "KB-ENG-003.md"), ChunkingConfig(64, 256))
+    by_parent: dict[int, set[str]] = {}
+    for c in chunks:
+        by_parent.setdefault(c.parent_index, set()).add(c.context)
+    # One parent index means exactly one section text, and sections are numbered in order.
+    assert all(len(contexts) == 1 for contexts in by_parent.values())
+    assert sorted(by_parent) == list(range(len(by_parent)))
+    payment = [c for c in chunks if c.section == "Payment API"]
+    assert len({c.parent_index for c in payment}) == 1  # its children share one parent
+    assert {c.parent_index for c in payment}.isdisjoint(
+        {c.parent_index for c in chunks if c.section == "Search API"}
+    )
