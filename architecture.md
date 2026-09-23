@@ -1,7 +1,8 @@
 # Architecture
 
-> Status: **day 3** (gateway, providers, conversations, RAG knowledge system). Sections marked _TBD_ are filled as each component lands, so this
-> document only ever describes what the code actually does.
+> The engineering view of the system. The cross-team overview is [`README.md`](README.md);
+> each decision below has its own record in [`docs/decisions/`](docs/decisions/README.md).
+> This document describes only what the code actually does.
 
 ## 1. Request path
 
@@ -42,9 +43,6 @@ engine before anything executes.
 | Observability | structlog JSON, Prometheus, Opik (optional profile) | Logs, metrics, LLM traces and eval experiments |
 | Demo UI | Flowise (optional profile) | Thin client of `/api/chat` only — holds no policy or credentials |
 
-
-Each decision lists the alternatives considered and why they lost. Format: context →
-decision → consequences.
 
 ### Module map
 
@@ -88,27 +86,9 @@ flowchart LR
 
 ### Document ingestion
 
-```mermaid
-flowchart LR
-  file["PDF · Markdown · text<br/>+ metadata (department, classification)"]
-  queue["make ingest<br/>job row + Redis message"]
-  guard{"inside knowledge root?<br/>metadata valid?"}
-  parse["parse<br/>headings path across pages"]
-  chunk["parent-child chunks<br/>~64-token children, ≤256-token sections"]
-  embed["embed children<br/>nomic, local"]
-  swap["one transaction:<br/>supersede old version,<br/>insert new chunks"]
-  shared[("chunks<br/>public · internal")]
-  conf[("confidential_chunks<br/>separate index")]
-  failed["job failed<br/>no retry"]
-  dlq["retries 1-30 s ×3,<br/>then dead-letter queue"]
-
-  file --> queue --> guard
-  guard -- no --> failed
-  guard -- yes --> parse --> chunk --> embed --> swap
-  swap -- "public · internal" --> shared
-  swap -- "confidential" --> conf
-  embed -. "transient error" .-> dlq
-```
+Diagram: [README - End-to-end: a document](README.md#end-to-end-a-document). The stages are implemented in
+`knowledge/ingest.py` and `knowledge/chunking.py`; the retry and dead-letter rules are
+D-24, the versioned swap D-23.
 
 ## 3. Decision records
 

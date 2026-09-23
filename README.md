@@ -123,6 +123,39 @@ sequenceDiagram
 If nothing relevant is found, the assistant says so **without calling a model** — an
 unsupported answer is not possible on that path.
 
+### End-to-end: a question
+
+The same request in engineering detail: every hop the overview above collapses.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor user as User
+  participant api as FastAPI
+  participant db as Postgres + pgvector (RLS)
+  participant gw as LLM gateway
+  participant llm as Model (NIM · Claude · Ollama)
+
+  user->>api: POST /api/chat (Bearer JWT)
+  api->>db: load user, check token's user + role, build AccessScope
+  api->>db: save the question, load conversation history
+  api->>gw: embed question (nomic-embed-text, local)
+  api->>db: set_config(scope) + vector and full-text search, one transaction
+  db-->>api: only rows the scope allows (SQL filter + RLS)
+  api->>api: fuse (RRF), relevance gate, collapse to top-4 sections
+  alt nothing relevant
+    api-->>user: fixed "couldn't find this" answer, no model call
+  else sources found
+    api->>gw: grounded prompt, sources as escaped data, egress allowed only without confidential text
+    gw->>llm: chosen model first, others as fallback
+    llm-->>gw: answer with [n] citation markers
+    gw->>db: usage row per attempt (tokens, latency, cost, outcome)
+    api->>api: keep only citations that point at retrieved sources
+    api->>db: save answer + citations
+    api-->>user: answer, citations (title, version, section), model, usage
+  end
+```
+
 ## Component responsibilities
 
 | Component | Responsible for | Deliberately does **not** |
@@ -431,6 +464,32 @@ type and latency only.
   K distinct sections. Chosen against 7 alternatives including per-page and Docling's
   HybridChunker (`evaluation/reports/chunking.md`); the alternatives live in
   `evaluation/chunkers.py`.
+
+### End-to-end: a document
+
+From an uploaded or ingested file to a searchable, permission-scoped version.
+
+```mermaid
+flowchart LR
+  file["PDF · Markdown · text<br/>+ metadata (department, classification)"]
+  queue["make ingest<br/>job row + Redis message"]
+  guard{"inside knowledge root?<br/>metadata valid?"}
+  parse["parse<br/>headings path across pages"]
+  chunk["parent-child chunks<br/>~64-token children, ≤256-token sections"]
+  embed["embed children<br/>nomic, local"]
+  swap["one transaction:<br/>supersede old version,<br/>insert new chunks"]
+  shared[("chunks<br/>public · internal")]
+  conf[("confidential_chunks<br/>separate index")]
+  failed["job failed<br/>no retry"]
+  dlq["retries 1-30 s ×3,<br/>then dead-letter queue"]
+
+  file --> queue --> guard
+  guard -- no --> failed
+  guard -- yes --> parse --> chunk --> embed --> swap
+  swap -- "public · internal" --> shared
+  swap -- "confidential" --> conf
+  embed -. "transient error" .-> dlq
+```
 
 ```bash
 uv run python -m evaluation.chunking_eval            # 10 strategies incl. child-size ablation
