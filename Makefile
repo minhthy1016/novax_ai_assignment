@@ -22,6 +22,9 @@ migrate: ## Apply migrations from the host
 seed: ## Load fixtures from the host
 	uv run python -m opsassist.seed
 
+ui: ## Open the console (dev/test only)
+	uv run python -c "import webbrowser; webbrowser.open('http://localhost:8000/ui')"
+
 ingest: ## Queue all sample knowledge for the worker to (re)index
 	$(COMPOSE) exec api python -m opsassist.knowledge.ingest
 
@@ -46,7 +49,17 @@ test: ## Unit tests (no services needed)
 test-integration: ## Integration tests (needs `make up`)
 	uv run pytest -m integration
 
+test-security: ## Security tests: authz, isolation, injection, audit, egress (needs `make up`)
+	uv run pytest -m security
+
+test-eval: ## Evaluation: retrieval + answer quality through the running API
+	uv run python -m evaluation.retrieval_api_eval
+	uv run python -m evaluation.answer_eval --model ollama/llama3.2-3b
+
+test-all: ## Everything (needs `make up` + `make ingest`)
+	uv run pytest
+
 logs: ## Tail API logs
 	$(COMPOSE) logs -f api
 
-.PHONY: help install up down reset migrate seed ingest ingest-inline jobs lint fmt test test-integration logs
+.PHONY: help install up down reset migrate seed ui ingest ingest-inline jobs lint fmt test test-integration test-security test-eval test-all logs

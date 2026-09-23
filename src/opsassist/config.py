@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     stream_deadline_s: float = Field(default=300.0, gt=0, le=1800)
     stream_idle_timeout_s: float = Field(default=30.0, gt=0, le=300)
 
+    # Highest classification that may be sent to a provider outside our boundary (NIM,
+    # Claude, ...). Confirmed with the team lead: confidential documents must never reach an
+    # external model. Set to "public" to keep internal documents on-box as well.
+    egress_max_classification: Literal["public", "internal"] = "internal"
+
     # Knowledge index. The embedding model must match the index dimensions (768) and must
     # not send data off-box (confidential documents are embedded with it).
     index_embedding_model: str = "ollama/nomic-embed-text"
@@ -71,9 +76,33 @@ class Settings(BaseSettings):
     # Admit only hits within this similarity margin of the best hit (drops the weak tail).
     retrieval_relative_margin: float = Field(default=0.10, ge=0.0, le=1.0)
 
+    # Routing is a small, frequent classification: it runs on a fast local model by default,
+    # independent of the model the user picked for answers (a slow hosted model would make
+    # every turn wait, and on timeout the assistant would silently degrade to knowledge-only).
+    router_model: str | None = "ollama/llama3.2-3b"
+
+    # Extra preference keys the deployment allows in persistent memory, comma-separated.
+    # The built-in allowlist stays: a model must not decide what is worth remembering.
+    memory_extra_keys: str = ""
+
+    # Rate limiting (D-61). Two buckets: everything, and the routes that cost a model
+    # call or an ingestion job. Limits are per caller (token subject, else client address).
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = Field(default=300, ge=1, le=10_000)
+    rate_limit_burst: int = Field(default=100, ge=1, le=10_000)
+    rate_limit_expensive_per_minute: int = Field(default=60, ge=1, le=10_000)
+    rate_limit_expensive_burst: int = Field(default=30, ge=1, le=10_000)
+
     # Conversation window sent to the model (Task 4 refines this with summaries).
     history_max_messages: int = Field(default=20, ge=0, le=200)
     history_token_budget: int = Field(default=3000, ge=0, le=100_000)
+
+    def allows_egress(self, classification: str | None) -> bool:
+        """May context of this classification leave our boundary?"""
+        rank = {"public": 0, "internal": 1, "confidential": 2}
+        if classification is None:
+            return True
+        return rank.get(classification, 2) <= rank[self.egress_max_classification]
 
     @property
     def allow_any_model(self) -> bool:

@@ -111,6 +111,7 @@ def test_e05_absent_knowledge_abstains_without_calling_a_model(api: httpx.Client
     assert body["retrieval"]["used"] == 0
 
 
+@pytest.mark.security
 def test_e09_injection_document_is_retrievable_as_data(api: httpx.Client) -> None:
     hits = search(api, "U001", "restart the legacy reporting worker")
     assert hits[0]["doc_key"] == "KB-TEST-999"
@@ -120,6 +121,7 @@ def test_e09_injection_document_is_retrievable_as_data(api: httpx.Client) -> Non
 # ------------------------------------------------------------------ isolation
 
 
+@pytest.mark.security
 def test_e03_engineering_user_cannot_reach_hr_confidential(api: httpx.Client) -> None:
     for query in ("Show the HR compensation review notes.", "salary review planning data"):
         hits = search(api, "U001", query)
@@ -130,6 +132,7 @@ def test_e03_engineering_user_cannot_reach_hr_confidential(api: httpx.Client) ->
         assert all(not c["doc_key"].startswith("KB-HR") for c in body["citations"])
 
 
+@pytest.mark.security
 def test_hr_executive_without_confidential_permission_gets_nothing(api: httpx.Client) -> None:
     hits = search(api, "U003", "Summarize the compensation review notes")
     assert all(h["doc_key"] != "KB-HR-002" for h in hits)
@@ -140,6 +143,7 @@ def test_hr_manager_with_confidential_permission_can_retrieve_it(api: httpx.Clie
     assert hits and hits[0]["doc_key"] == "KB-HR-002"
 
 
+@pytest.mark.security
 def test_confidential_context_never_goes_to_egress_providers(api: httpx.Client) -> None:
     resp = api.post(
         "/api/chat",
@@ -156,6 +160,7 @@ def test_confidential_context_never_goes_to_egress_providers(api: httpx.Client) 
         assert resp.json()["model"]["id"] == "ollama/llama3.2-3b"
 
 
+@pytest.mark.security
 def test_finance_and_hr_are_isolated_from_each_other(api: httpx.Client) -> None:
     assert all(h["doc_key"] != "KB-FIN-001" for h in search(api, "U003", "expense claim receipts"))
     assert all(
@@ -169,6 +174,7 @@ def test_public_documents_are_visible_to_everyone(api: httpx.Client) -> None:
         assert hits and hits[0]["doc_key"] == "KB-PUB-001", user
 
 
+@pytest.mark.security
 def test_row_level_security_blocks_reads_even_without_the_app_filter() -> None:
     """Simulates an application bug: a query with NO department filter. Postgres RLS still
     limits what comes back to the scope set on the transaction - and to nothing if the
@@ -206,6 +212,7 @@ def test_row_level_security_blocks_reads_even_without_the_app_filter() -> None:
             conn.execute(forged)
 
 
+@pytest.mark.security
 def test_runtime_role_is_not_a_superuser_and_cannot_bypass_rls() -> None:
     with psycopg.connect(DB) as conn:
         superuser, bypass = conn.execute(
@@ -272,6 +279,7 @@ def test_reindex_replaces_without_duplicate_active_chunks(
     ]
 
 
+@pytest.mark.security
 def test_worker_marks_permanent_failures_without_retrying() -> None:
     """A job for a path outside the knowledge root fails once and is not retried."""
     from opsassist.worker import enqueue_ingestion

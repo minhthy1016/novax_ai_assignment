@@ -121,16 +121,110 @@ class RetrievalOut(BaseModel):
     embedding_model: str
 
 
+class ToolOut(BaseModel):
+    name: str
+    status: Literal["ok", "denied", "pending", "error"]
+    message: str
+    data: dict[str, object] | None = None
+    pending_action_id: uuid.UUID | None = None
+    action_hash: str | None = None
+
+
+class PendingActionOut(BaseModel):
+    id: uuid.UUID
+    tool: str
+    summary: str
+    arguments: dict[str, object]
+    action_hash: str
+    status: str
+    requester_id: str
+    approver_id: str | None
+    approve_permission: str
+    created_at: datetime
+    expires_at: datetime
+    result: dict[str, object] | None = None
+
+
+class ApproveRequest(ApiModel):
+    """The approver confirms the exact action: the hash pins the proposed arguments."""
+
+    action_hash: str = Field(min_length=64, max_length=64)
+
+
+class RejectRequest(ApiModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class AuditRecordOut(BaseModel):
+    id: int
+    created_at: datetime
+    request_id: str
+    actor_id: str
+    actor_role: str
+    event: str
+    tool: str | None
+    decision: str
+    reason: str | None
+    arguments: dict[str, object] | None
+    result: dict[str, object] | None
+    pending_action_id: uuid.UUID | None
+    action_hash: str | None
+    hash: str
+
+
+class AuditVerifyOut(BaseModel):
+    records: int
+    intact: bool
+    broken_at: int | None = None
+    detail: str | None = None
+
+
+class MemoryOut(BaseModel):
+    key: str
+    value: str
+    category: str
+    source: str
+    updated_at: datetime
+
+
+class MemoryPut(ApiModel):
+    key: str = Field(min_length=2, max_length=40)
+    value: str = Field(min_length=1, max_length=200)
+
+
+class UploadResponse(BaseModel):
+    doc_key: str
+    department: str
+    classification: str
+    title: str
+    job_id: str
+    stored_as: str
+    request_id: str
+
+
+class TicketOut(BaseModel):
+    ticket_id: str
+    title: str
+    severity: str
+    status: str
+    details: str
+    raised_by: str
+    raised_by_name: str
+    raised_at: datetime
+
+
 class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID
     content: str
+    route: Literal["small_talk", "knowledge", "tool", "refuse"]
+    tool: ToolOut | None = None
     citations: list[CitationOut]
     grounded: bool
     abstained: bool
     # None when no model was called (nothing relevant was retrieved -> abstention).
     model: ModelRef | None
-    route: str | None
+    model_route: str | None
     fallback_used: bool
     finish_reason: str | None
     usage: UsageOut

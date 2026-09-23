@@ -195,6 +195,7 @@ async def ingest_file(
                 department=meta.department,
                 classification=meta.classification,
                 chunk_index=c.index,
+                parent_index=c.parent_index,
                 locator=c.locator,
                 section=c.section,
                 page=c.page_start,

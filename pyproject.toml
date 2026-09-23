@@ -21,6 +21,9 @@ dependencies = [
     "anthropic>=1.0",
     "pypdf>=5.1",
     "dramatiq[redis]>=1.17",
+    "langgraph>=0.2",
+    "langgraph-checkpoint-postgres>=2.0",
+    "python-multipart>=0.0.20",
 ]
 
 [dependency-groups]
@@ -44,6 +47,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: needs the docker compose stack (postgres + redis)",
+    "security: authorization, isolation, injection, audit integrity and data-egress tests",
 ]
 
 [tool.ruff]

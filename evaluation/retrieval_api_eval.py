@@ -12,6 +12,7 @@ import json
 import httpx
 
 from evaluation.chunking_eval import ROOT, _norm
+from evaluation.client import post
 
 
 def main() -> None:
@@ -26,10 +27,11 @@ def main() -> None:
         for case in cases:
             user = case["user"]
             if user not in tokens:
-                tokens[user] = api.post("/api/auth/dev-token", json={"user_id": user}).json()[
+                tokens[user] = post(api, "/api/auth/dev-token", json={"user_id": user}).json()[
                     "access_token"
                 ]
-            hits = api.post(
+            hits = post(
+                api,
                 "/api/search",
                 json={"query": case["query"], "top_k": 4},
                 headers={"Authorization": f"Bearer {tokens[user]}"},

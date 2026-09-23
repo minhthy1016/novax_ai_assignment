@@ -11,6 +11,9 @@ from opsassist.main import create_app
 
 SETTINGS = Settings(env="test", jwt_secret="unit-test-secret-0123456789abcdef")
 
+# Authorization, tool policy, audit integrity and data-egress rules.
+pytestmark = pytest.mark.security
+
 
 def test_round_trip_binds_user_and_role() -> None:
     claims = decode_token(SETTINGS, issue_token(SETTINGS, "U001", "Senior Engineer"))

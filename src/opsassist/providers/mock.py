@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import json
 import math
 import re
 from collections import Counter
@@ -46,12 +47,61 @@ _WORD = re.compile(r"[a-z0-9]+")
 
 
 _SOURCE_1 = re.compile(r'<source id="1"[^>]*>\n(.*?)\n</source>', re.DOTALL)
+_SERVER = re.compile(r"\b([a-z]+-[a-z]+-\d+)\b")
+
+
+def _route_decision(question: str) -> str:
+    """Rule-based stand-in for the router model, so CI exercises the agent's tool path
+    without any real model. Mirrors the routes a real classifier would choose."""
+    q = question.lower()
+    if any(w in q for w in ("skip approval", "deploy now", "bypass", "without approval")):
+        return json.dumps({"route": "refuse", "tool": None, "arguments": None})
+    if "vpn" in q:
+        name = re.search(r"for ([A-Z][a-z]+ [A-Z][a-z]+)", question)
+        user_id = re.search(r"\b(U\d{3})\b", question)
+        args: dict[str, object] = {"employee_id": user_id.group(1)} if user_id else {}
+        if not args and name:
+            args = {"employee_name": name.group(1)}
+        return json.dumps({"route": "tool", "tool": "create_vpn_profile", "arguments": args})
+    if ticket := re.search(r"\b(INC-\d{1,10})\b", question, re.IGNORECASE):
+        return json.dumps(
+            {
+                "route": "tool",
+                "tool": "get_support_ticket",
+                "arguments": {"ticket_id": ticket.group(1).upper()},
+            }
+        )
+    if "ticket" in q:
+        severity = next((s for s in ("critical", "high", "medium", "low") if s in q), "medium")
+        return json.dumps(
+            {
+                "route": "tool",
+                "tool": "create_support_ticket",
+                "arguments": {
+                    "title": question[:80],
+                    "severity": severity,
+                    "details": question[:500],
+                },
+            }
+        )
+    if server := _SERVER.search(q):
+        return json.dumps(
+            {
+                "route": "tool",
+                "tool": "get_server_status",
+                "arguments": {"server_id": server.group(1)},
+            }
+        )
+    return json.dumps({"route": "knowledge", "tool": None, "arguments": None})
 
 
 def default_responder(messages: list[ChatMessage]) -> str:
     """Echo for plain chat; for grounded prompts, answer with the first sentence of
     source 1 and cite it - deterministic, so the citation pipeline is testable offline."""
     last_user = next((m.content for m in reversed(messages) if m.role == "user"), "")
+    system = next((m.content for m in messages if m.role == "system"), "")
+    if '"route"' in system:  # the router prompt
+        return _route_decision(last_user)
     if m := _SOURCE_1.search(last_user):
         first_sentence = re.split(r"(?<=[.!?])\s", m.group(1).strip(), maxsplit=1)[0]
         return f"{html.unescape(first_sentence)} [1]"

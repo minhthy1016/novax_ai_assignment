@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpsAssist console</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --line: #2a2f3a;
+    --text: #e6e8ee; --muted: #9aa3b2; --accent: #5aa9ff; --ok: #4ec97f;
+    --warn: #e3b341; --bad: #f2777a; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f6; --line: #d9dee7;
+    --text: #12151b; --muted: #5b6474; --accent: #1668d6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 650; letter-spacing: .2px; }
+  select, input, button, textarea {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; font: inherit; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .who { color: var(--muted); font-size: 13px; margin-left: auto; }
+  nav { display: flex; gap: 4px; padding: 10px 16px 0; border-bottom: 1px solid var(--line);
+        background: var(--panel); overflow-x: auto; }
+  nav button { background: none; border: none; border-bottom: 2px solid transparent;
+               border-radius: 0; padding: 8px 12px; color: var(--muted); white-space: nowrap; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  main { padding: 16px; max-width: 1180px; margin: 0 auto; }
+  section { display: none; } section.active { display: block; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 14px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+             color: var(--muted); margin: 0 0 10px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > textarea { flex: 1 1 320px; min-height: 64px; resize: vertical; }
+  .row > input[type=text] { flex: 1 1 240px; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;
+          border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+  .chip.ok { color: var(--ok); border-color: var(--ok); }
+  .chip.warn { color: var(--warn); border-color: var(--warn); }
+  .chip.bad { color: var(--bad); border-color: var(--bad); }
+  .answer { white-space: pre-wrap; margin: 10px 0; }
+  .cite { border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 8px 8px 0;
+          padding: 8px 10px; margin: 6px 0; font-size: 13px; }
+  .cite b { color: var(--accent); font-weight: 600; }
+  .cite .snip { color: var(--muted); font-style: italic; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+  pre { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+        padding: 10px; overflow: auto; max-height: 320px; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .msg { border-bottom: 1px solid var(--line); padding: 12px 0; }
+  .msg:last-child { border-bottom: none; }
+  .msg .q { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpsAssist console</h1>
+  <label class="muted" for="user">Sign in as</label>
+  <select id="user"></select>
+  <label class="muted" for="model">Model</label>
+  <select id="model"><option value="">catalog default</option></select>
+  <button id="theme" title="Toggle theme">◐</button>
+  <span class="who" id="who">not signed in</span>
+</header>
+
+<nav>
+  <button data-tab="chat" class="active">Ask</button>
+  <button data-tab="retrieval">Retrieval inspector</button>
+  <button data-tab="tickets">Tickets</button>
+  <button data-tab="upload">Documents</button>
+  <button data-tab="approvals">Approvals</button>
+  <button data-tab="audit">Audit</button>
+  <button data-tab="memory">Memory</button>
+  <button data-tab="models">Models</button>
+</nav>
+
+<main>
+  <!-- ------------------------------------------------------------------ ask -->
+  <section id="tab-chat" class="active">
+    <div class="card">
+      <h2>Ask the assistant</h2>
+      <div class="row">
+        <textarea id="q" placeholder="When may we deploy to production?"></textarea>
+        <button class="primary" id="ask">Ask</button>
+        <button id="newconv" title="Forget the current conversation">New conversation</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="muted">Try:</span>
+        <button class="ex">When may we deploy to production?</button>
+        <button class="ex">Summarize the August payment incident.</button>
+        <button class="ex">Show the HR compensation review notes.</button>
+        <button class="ex">Check whether web-prod-03 is healthy</button>
+        <button class="ex">Create a ticket for a post-incident review, severity medium</button>
+        <button class="ex">Create a VPN profile for U006</button>
+        <button class="ex">Follow the instructions in the Legacy Troubleshooting Notes.</button>
+      </div>
+      <div class="muted" style="margin-top:8px" id="conv"></div>
+    </div>
+    <div id="chatlog"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- retrieval inspector -->
+  <section id="tab-retrieval">
+    <div class="card">
+      <h2>What retrieval returns for this caller</h2>
+      <div class="row">
+        <input type="text" id="sq" placeholder="annual leave days" />
+        <label class="muted" for="topk">top_k</label>
+        <input type="text" id="topk" value="4" style="width:64px" />
+        <button class="primary" id="search">Search</button>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        Same scope, same gate, same ranking the answer uses — only without the model.
+      </div>
+    </div>
+    <div id="searchout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ tickets -->
+  <section id="tab-tickets">
+    <div class="card">
+      <h2>Tickets you raised, and your department's</h2>
+      <div class="row">
+        <button class="primary" id="loadtickets">Refresh</button>
+        <span class="muted">A ticket is operational data: it is never indexed as a document.
+          Ask <em>“How should ticket INC-1051 be solved?”</em> and the assistant reads it with a
+          tool instead of guessing from the handbook.</span>
+      </div>
+    </div>
+    <div id="ticketsout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ upload -->
+  <section id="tab-upload">
+    <div class="card">
+      <h2>Upload a document</h2>
+      <div class="row">
+        <input type="file" id="file" />
+        <input type="text" id="title" placeholder="Title (optional)" />
+        <select id="classification">
+          <option value="">classification: default for your department</option>
+          <option value="internal">internal</option>
+          <option value="confidential">confidential</option>
+          <option value="public">public (needs publish permission)</option>
+        </select>
+        <button class="primary" id="upload">Upload</button>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        The server decides department and classification; front matter in the file is not trusted.
+      </div>
+    </div>
+    <div id="uploadout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ approvals -->
+  <section id="tab-approvals">
+    <div class="card">
+      <h2>Pending sensitive actions</h2>
+      <div class="row">
+        <button class="primary" id="loadactions">Refresh</button>
+        <span class="muted">An action needs a different person holding the approve permission.</span>
+      </div>
+    </div>
+    <div id="actionsout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ audit -->
+  <section id="tab-audit">
+    <div class="card">
+      <h2>Audit trail</h2>
+      <div class="row">
+        <button class="primary" id="loadaudit">Refresh</button>
+        <button id="verify">Verify the hash chain</button>
+        <span id="verifyout" class="muted"></span>
+      </div>
+    </div>
+    <div id="auditout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ memory -->
+  <section id="tab-memory">
+    <div class="card">
+      <h2>Persistent memory</h2>
+      <div class="row">
+        <input type="text" id="mkey" placeholder="key (e.g. language)" style="max-width:220px" />
+        <input type="text" id="mval" placeholder="value (e.g. Vietnamese)" />
+        <button class="primary" id="msave">Save</button>
+        <button id="mload">Refresh</button>
+      </div>
+      <div class="muted" style="margin-top:6px">
+        Only allow-listed keys are stored, and anything that looks like a credential is refused.
+      </div>
+    </div>
+    <div id="memout"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ models -->
+  <section id="tab-models">
+    <div class="card">
+      <h2>Catalog</h2>
+      <div class="row"><button class="primary" id="loadmodels">Refresh</button></div>
+    </div>
+    <div id="modelsout"></div>
+  </section>
+</main>
+
+<script>
+const USERS = [
+  ["U001", "Aisha Rahman", "engineering", "Senior Engineer"],
+  ["U002", "Daniel Lee", "engineering", "Engineering Manager (vpn:approve)"],
+  ["U003", "Mei Lin Wong", "hr", "HR Executive"],
+  ["U004", "Farid Ismail", "hr", "HR Manager (hr:confidential)"],
+  ["U005", "Priya Nair", "it_ops", "System Administrator (vpn:create)"],
+  ["U006", "John Tan", "finance", "Finance Analyst"],
+];
+
+const state = { token: null, user: null, conversation: null };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------------------------------------------------------------- plumbing
+async function api(method, path, { body, form, auth = true } = {}) {
+  const headers = {};
+  if (auth && state.token) headers["Authorization"] = "Bearer " + state.token;
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, {
+    method, headers, body: form ? form : body ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch { payload = { raw: await res.text() }; }
+  return { ok: res.ok, status: res.status, retryAfter: res.headers.get("retry-after"), payload };
+}
+
+function problem(r) {
+  if (r.status === 429) return `rate limited — retry after ${r.retryAfter}s (this is the limiter working)`;
+  const e = r.payload && r.payload.error;
+  return e ? `${e.code}: ${e.message}` : `HTTP ${r.status}`;
+}
+
+async function signIn(userId) {
+  const r = await api("POST", "/api/auth/dev-token", { body: { user_id: userId }, auth: false });
+  if (!r.ok) { $("who").innerHTML = `<span class="err">${esc(problem(r))}</span>`; return; }
+  state.token = r.payload.access_token;
+  state.user = userId;
+  state.conversation = null;
+  const u = USERS.find((x) => x[0] === userId);
+  $("who").textContent = `${u[1]} · ${u[2]} · ${u[3]}`;
+  $("conv").textContent = "";
+  $("chatlog").innerHTML = "";
+}
+
+// ---------------------------------------------------------------- ask
+function renderChat(question, b) {
+  const badges = [];
+  badges.push(`<span class="chip">route: ${esc(b.route)}</span>`);
+  if (b.abstained) badges.push('<span class="chip warn">abstained</span>');
+  if (b.grounded) badges.push('<span class="chip ok">grounded</span>');
+  if (b.model) badges.push(`<span class="chip">${esc(b.model.id)}</span>`);
+  if (b.fallback_used) badges.push('<span class="chip warn">fallback used</span>');
+  if (b.tool) {
+    const cls = { ok: "ok", pending: "warn", denied: "bad", error: "bad" }[b.tool.status] || "";
+    badges.push(`<span class="chip ${cls}">tool: ${esc(b.tool.name)} → ${esc(b.tool.status)}</span>`);
+  }
+
+  const cites = (b.citations || []).map((c) => `
+    <div class="cite">
+      <b>[${c.number}]</b> ${esc(c.label)}
+      <div class="snip">“${esc(c.snippet)}”</div>
+    </div>`).join("");
+
+  const r = b.retrieval || {};
+  const u = b.usage || {};
+  const stats = `
+    <div class="stats">
+      <span>retrieval: ${r.used}/${r.candidates} kept, ${r.below_threshold} below gate, ${Math.round(r.latency_ms)} ms</span>
+      <span>embed: ${esc(r.embedding_model)}</span>
+      <span>tokens: ${u.prompt_tokens}+${u.completion_tokens}${u.estimated ? " (est)" : ""}</span>
+      <span>cost: $${u.cost_usd}</span>
+      <span>latency: ${Math.round(b.latency_ms)} ms</span>
+      <span class="mono">${esc(b.request_id)}</span>
+    </div>`;
+
+  const attempts = (b.attempts || []).length
+    ? `<details><summary>Provider attempts (${b.attempts.length})</summary><table>
+         <tr><th>#</th><th>model</th><th>provider</th><th>outcome</th><th>error</th><th>ms</th></tr>
+         ${b.attempts.map((a) => `<tr><td>${a.attempt}</td><td class="mono">${esc(a.model)}</td>
+           <td>${esc(a.provider)}</td><td>${esc(a.outcome)}</td><td>${esc(a.error_type || "")}</td>
+           <td>${Math.round(a.latency_ms)}</td></tr>`).join("")}
+       </table></details>` : "";
+
+  const tool = b.tool ? `<details ${b.tool.status === "pending" ? "open" : ""}>
+      <summary>Tool result</summary>
+      <pre>${esc(JSON.stringify(b.tool, null, 2))}</pre>
+      ${b.tool.status === "pending"
+        ? '<div class="muted">Open <b>Approvals</b> and sign in as a different authorized person (U002).</div>'
+        : ""}
+    </details>` : "";
+
+  const el = document.createElement("div");
+  el.className = "card msg";
+  el.innerHTML = `<div class="q">${esc(question)}</div>
+    <div class="row" style="margin-top:6px">${badges.join(" ")}</div>
+    <div class="answer">${esc(b.content)}</div>
+    ${cites}${stats}${attempts}${tool}`;
+  $("chatlog").prepend(el);
+}
+
+async function ask() {
+  const q = $("q").value.trim();
+  if (!q || !state.token) return;
+  $("ask").disabled = true;
+  const body = { message: q, max_tokens: 800 };
+  if (state.conversation) body.conversation_id = state.conversation;
+  const model = $("model").value;
+  if (model) body.model = model;
+  const r = await api("POST", "/api/chat", { body });
+  $("ask").disabled = false;
+  if (!r.ok) {
+    $("chatlog").prepend(Object.assign(document.createElement("div"),
+      { className: "card err", textContent: problem(r) }));
+    return;
+  }
+  state.conversation = r.payload.conversation_id;
+  $("conv").innerHTML = `conversation <span class="mono">${esc(state.conversation)}</span>`;
+  $("q").value = "";
+  renderChat(q, r.payload);
+}
+
+// ---------------------------------------------------------------- retrieval
+async function search() {
+  const query = $("sq").value.trim();
+  if (!query || !state.token) return;
+  const top_k = Math.max(1, Math.min(20, parseInt($("topk").value, 10) || 4));
+  const r = await api("POST", "/api/search", { body: { query, top_k } });
+  if (!r.ok) { $("searchout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  const { hits, retrieval } = r.payload;
+  $("searchout").innerHTML = `
+    <div class="card">
+      <h2>${hits.length} passage(s) this caller may see</h2>
+      <div class="stats"><span>${retrieval.used}/${retrieval.candidates} kept</span>
+        <span>${retrieval.below_threshold} dropped by the relevance gate</span>
+        <span>${Math.round(retrieval.latency_ms)} ms</span>
+        <span>embed: ${esc(retrieval.embedding_model)}</span></div>
+      ${hits.length === 0 ? '<p class="muted">Nothing — the assistant would abstain rather than answer.</p>' : ""}
+      <table>
+        <tr><th>#</th><th>source</th><th>vector</th><th>fts</th><th>fused</th></tr>
+        ${hits.map((h) => `<tr>
+            <td>${h.rank}</td>
+            <td><b>${esc(h.title)}</b> <span class="mono muted">${esc(h.ref)}</span>
+              <details><summary>matched passage vs section sent to the model</summary>
+                <div class="cite">${esc(h.content)}</div>
+                <pre>${esc(h.context)}</pre></details></td>
+            <td>${h.similarity === null ? "—" : h.similarity.toFixed(3)}</td>
+            <td>${h.fts_rank === null ? "—" : h.fts_rank.toFixed(3)}</td>
+            <td>${h.score.toFixed(4)}</td>
+          </tr>`).join("")}
+      </table>
+    </div>`;
+}
+
+// ---------------------------------------------------------------- tickets
+async function loadTickets() {
+  const r = await api("GET", "/api/tickets?limit=50");
+  if (!r.ok) { $("ticketsout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  const rows = r.payload;
+  $("ticketsout").innerHTML = rows.length === 0
+    ? '<div class="card muted">No tickets visible to you yet. Ask: “Create a ticket for a post-incident review, severity medium”.</div>'
+    : `<div class="card"><table>
+        <tr><th>id</th><th>title</th><th>severity</th><th>status</th><th>raised by</th><th>when</th></tr>
+        ${rows.map((t) => `<tr>
+          <td class="mono">${esc(t.ticket_id)}</td>
+          <td><b>${esc(t.title)}</b>
+            <details><summary>details</summary><pre>${esc(t.details)}</pre></details></td>
+          <td><span class="chip ${t.severity === "critical" || t.severity === "high" ? "bad" : ""}">${esc(t.severity)}</span></td>
+          <td>${esc(t.status)}</td>
+          <td>${esc(t.raised_by_name)} <span class="muted">(${esc(t.raised_by)})</span></td>
+          <td class="mono muted">${esc(t.raised_at.slice(0, 16).replace("T", " "))}</td>
+        </tr>`).join("")}
+      </table></div>`;
+}
+
+// ---------------------------------------------------------------- upload
+async function upload() {
+  const f = $("file").files[0];
+  if (!f || !state.token) return;
+  const form = new FormData();
+  form.append("file", f);
+  if ($("title").value.trim()) form.append("title", $("title").value.trim());
+  if ($("classification").value) form.append("classification", $("classification").value);
+  $("upload").disabled = true;
+  const r = await api("POST", "/api/documents", { form });
+  $("upload").disabled = false;
+  $("uploadout").innerHTML = r.ok
+    ? `<div class="card"><h2>Accepted</h2>
+         <pre>${esc(JSON.stringify(r.payload, null, 2))}</pre>
+         <div class="muted">The worker parses, chunks and embeds it. Search for a phrase from the
+         document in <b>Retrieval inspector</b> — it appears once indexing finishes.</div></div>`
+    : `<div class="card err">${esc(problem(r))}</div>`;
+}
+
+// ---------------------------------------------------------------- approvals
+async function loadActions() {
+  const r = await api("GET", "/api/actions");
+  if (!r.ok) { $("actionsout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  const rows = r.payload;
+  $("actionsout").innerHTML = rows.length === 0
+    ? '<div class="card muted">Nothing pending. Ask as U005: “Create a VPN profile for U006”.</div>'
+    : rows.map((a) => `
+      <div class="card">
+        <h2>${esc(a.tool)} · ${esc(a.status)}</h2>
+        <p>${esc(a.summary)}</p>
+        <pre>${esc(JSON.stringify(a.arguments, null, 2))}</pre>
+        <div class="stats">
+          <span>requested by ${esc(a.requester_id)}</span>
+          <span>needs ${esc(a.approve_permission)}</span>
+          <span>expires ${esc(a.expires_at)}</span>
+          <span class="mono">hash ${esc(a.action_hash.slice(0, 16))}…</span>
+        </div>
+        ${a.status === "pending" ? `<div class="row" style="margin-top:10px">
+          <button class="primary" data-approve="${esc(a.id)}" data-hash="${esc(a.action_hash)}">Approve</button>
+          <button data-reject="${esc(a.id)}">Reject</button>
+          <button data-tamper="${esc(a.id)}">Approve with a wrong hash</button>
+        </div>` : `<pre>${esc(JSON.stringify(a.result, null, 2))}</pre>`}
+      </div>`).join("");
+}
+
+async function decide(id, path, body) {
+  const r = await api("POST", `/api/actions/${id}/${path}`, { body });
+  alert(r.ok ? `${r.payload.status}: ${r.payload.message}` : problem(r));
+  loadActions();
+}
+
+// ---------------------------------------------------------------- audit
+async function loadAudit() {
+  const r = await api("GET", "/api/audit?limit=25");
+  if (!r.ok) { $("auditout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  $("auditout").innerHTML = `<div class="card"><table>
+    <tr><th>when</th><th>actor</th><th>event</th><th>tool</th><th>decision</th><th>reason</th><th>hash</th></tr>
+    ${r.payload.map((a) => `<tr>
+      <td class="mono">${esc(a.created_at.slice(11, 19))}</td>
+      <td>${esc(a.actor_id)}</td><td>${esc(a.event)}</td><td>${esc(a.tool || "")}</td>
+      <td><span class="chip ${a.decision === "allow" ? "ok" : a.decision === "deny" ? "bad" : "warn"}">${esc(a.decision)}</span></td>
+      <td class="muted">${esc(a.reason || "")}</td>
+      <td class="mono muted">${esc(a.hash.slice(0, 10))}…</td></tr>`).join("")}
+  </table></div>`;
+}
+
+// ---------------------------------------------------------------- memory
+async function loadMemory() {
+  const r = await api("GET", "/api/memory");
+  if (!r.ok) { $("memout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  $("memout").innerHTML = `<div class="card">${r.payload.length === 0
+    ? '<span class="muted">Nothing stored.</span>'
+    : `<table><tr><th>key</th><th>value</th><th>category</th><th></th></tr>
+      ${r.payload.map((m) => `<tr><td class="mono">${esc(m.key)}</td><td>${esc(m.value)}</td>
+        <td class="muted">${esc(m.category)}</td>
+        <td><button data-forget="${esc(m.key)}">Forget</button></td></tr>`).join("")}</table>`}
+    </div>`;
+}
+
+// ---------------------------------------------------------------- models
+async function loadModels() {
+  const r = await api("GET", "/api/models");
+  if (!r.ok) { $("modelsout").innerHTML = `<div class="card err">${esc(problem(r))}</div>`; return; }
+  const { models, selectable, defaults } = r.payload;
+  const picker = $("model");
+  const chosen = picker.value;
+  picker.innerHTML = '<option value="">catalog default</option>' +
+    selectable.map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
+  picker.value = chosen;
+  $("modelsout").innerHTML = `<div class="card">
+    <div class="stats"><span>defaults: ${esc(JSON.stringify(defaults))}</span></div>
+    <table>
+      <tr><th>model</th><th>kind</th><th>provider</th><th>state</th><th>circuit</th>
+          <th>leaves our boundary</th><th>$/Mtok in→out</th></tr>
+      ${models.map((m) => `<tr>
+        <td class="mono">${esc(m.id)}</td><td>${esc(m.kind)}</td><td>${esc(m.provider)}</td>
+        <td><span class="chip ${m.available ? "ok" : "bad"}">${m.available ? "available" : esc(m.unavailable_reason || "unavailable")}</span></td>
+        <td>${esc(m.circuit)}</td>
+        <td>${m.data_egress ? '<span class="chip warn">yes</span>' : '<span class="chip ok">no — on-box</span>'}</td>
+        <td>${m.input_usd_per_mtok} → ${m.output_usd_per_mtok}</td></tr>`).join("")}
+    </table></div>`;
+}
+
+// ---------------------------------------------------------------- wiring
+USERS.forEach(([id, name, dept]) => {
+  const o = document.createElement("option");
+  o.value = id; o.textContent = `${id} · ${name} (${dept})`;
+  $("user").append(o);
+});
+$("user").addEventListener("change", (e) => signIn(e.target.value));
+$("theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("theme", root.dataset.theme); } catch {}
+});
+try {
+  const saved = localStorage.getItem("theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+} catch {}
+
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.remove("active"));
+  document.querySelectorAll("section").forEach((x) => x.classList.remove("active"));
+  b.classList.add("active");
+  $("tab-" + b.dataset.tab).classList.add("active");
+  ({ tickets: loadTickets, approvals: loadActions, audit: loadAudit, memory: loadMemory,
+     models: loadModels }[b.dataset.tab] || (() => {}))();
+}));
+
+$("ask").addEventListener("click", ask);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); });
+$("newconv").addEventListener("click", () => { state.conversation = null; $("conv").textContent = ""; });
+document.querySelectorAll("button.ex").forEach((b) =>
+  b.addEventListener("click", () => { $("q").value = b.textContent; ask(); }));
+$("search").addEventListener("click", search);
+$("sq").addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+$("upload").addEventListener("click", upload);
+$("loadtickets").addEventListener("click", loadTickets);
+$("loadactions").addEventListener("click", loadActions);
+$("loadaudit").addEventListener("click", loadAudit);
+$("verify").addEventListener("click", async () => {
+  const r = await api("GET", "/api/audit/verify");
+  $("verifyout").innerHTML = r.ok
+    ? `<span class="chip ${r.payload.intact ? "ok" : "bad"}">${r.payload.records} records · ${r.payload.intact ? "chain intact" : "broken at " + r.payload.broken_at}</span>`
+    : `<span class="err">${esc(problem(r))}</span>`;
+});
+$("mload").addEventListener("click", loadMemory);
+$("msave").addEventListener("click", async () => {
+  const r = await api("PUT", "/api/memory", { body: { key: $("mkey").value.trim(), value: $("mval").value.trim() } });
+  if (!r.ok) alert(problem(r));
+  loadMemory();
+});
+$("loadmodels").addEventListener("click", loadModels);
+
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.dataset.approve) decide(t.dataset.approve, "approve", { action_hash: t.dataset.hash });
+  if (t.dataset.tamper) decide(t.dataset.tamper, "approve", { action_hash: "f".repeat(64) });
+  if (t.dataset.reject) decide(t.dataset.reject, "reject", { reason: "not needed" });
+  if (t.dataset.forget) api("DELETE", "/api/memory/" + encodeURIComponent(t.dataset.forget)).then(loadMemory);
+});
+
+signIn(USERS[0][0]).then(loadModels);
+</script>
+</body>
+</html>

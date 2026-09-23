@@ -17,6 +17,11 @@ COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app alembic.ini ./
 COPY --chown=app:app config ./config
 COPY --chown=app:app sample_data ./sample_data
+# The console (dev/test only; the route is not mounted elsewhere).
+COPY --chown=app:app web ./web
+# Uploads live on a shared volume; creating the directory here (owned by the runtime user)
+# makes Docker initialise that volume with the same ownership instead of root.
+RUN mkdir -p /app/sample_data/knowledge/uploads && chown app:app /app/sample_data/knowledge/uploads
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER app
 EXPOSE 8000

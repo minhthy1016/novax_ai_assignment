@@ -1,5 +1,6 @@
 """Parent-child ("small-to-big") chunking with citable locators.
-
+Description : Hierarchical retrieval with fine-grained child embeddings and bounded parent context.
+Main idea : Retrieve narrowly, reason broadly, cite precisely.
 * **Children** (~64 tokens) are what gets embedded and matched: small chunks keep the
   embedding focused on one fact.
 * **Parents** are sections: consecutive paragraphs under the same heading path, packed up to
@@ -37,8 +38,9 @@ class ChunkingConfig:
     @property
     def chunker_id(self) -> str:
         """Recorded per document version and part of the content hash: changing the
-        chunking re-indexes documents instead of mixing chunkings in one index."""
-        return f"parent_child:{self.target_tokens}/{self.max_tokens}/{self.split_tokens}"
+        chunking (or this module's behaviour) re-indexes documents instead of mixing
+        chunkings in one index. v2 added explicit parent identity."""
+        return f"parent_child/v2:{self.target_tokens}/{self.max_tokens}/{self.split_tokens}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,7 @@ class Unit:
 @dataclass(frozen=True, slots=True)
 class Chunk:
     index: int
+    parent_index: int  # identity of the section this child belongs to, within the document
     text: str  # the matched text (child)
     embed_text: str  # what is embedded and full-text indexed
     context: str  # what the model receives (parent section)
@@ -141,10 +144,18 @@ def body_of(group: list[Unit]) -> str:
     return "\n".join(u.text for u in group)
 
 
-def make_chunk(index: int, group: list[Unit], context: str, header: str, locator: str) -> Chunk:
+def make_chunk(
+    index: int,
+    group: list[Unit],
+    context: str,
+    header: str,
+    locator: str,
+    parent_index: int | None = None,
+) -> Chunk:
     body = body_of(group)
     return Chunk(
         index=index,
+        parent_index=index if parent_index is None else parent_index,
         text=body,
         embed_text=f"{header}\n{body}",
         context=context,
@@ -164,9 +175,9 @@ def chunk_document(doc: ParsedDocument, config: ChunkingConfig | None = None) ->
     title = doc.meta.title
     units = split_units(doc.blocks, cfg.split_tokens, cfg.target_tokens)
     chunks: list[Chunk] = []
-    for parent in pack_units(units, cfg.max_tokens):
+    for parent_index, parent in enumerate(pack_units(units, cfg.max_tokens)):
         context, locator = body_of(parent), locator_for(title, parent)
         for child in pack_units(parent, cfg.target_tokens):
             header = header_for(title, child[0].headings)
-            chunks.append(make_chunk(len(chunks), child, context, header, locator))
+            chunks.append(make_chunk(len(chunks), child, context, header, locator, parent_index))
     return chunks

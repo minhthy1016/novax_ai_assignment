@@ -23,6 +23,7 @@ def parse_sse(text: str) -> list[tuple[str, dict[str, object]]]:
     return events
 
 
+@pytest.mark.security
 def test_api_requires_authentication(api: httpx.Client) -> None:
     resp = api.post("/api/chat", json={"message": "hi", "model": "mock/echo"})
     assert resp.status_code == 401
@@ -48,8 +49,9 @@ def test_chat_returns_answer_usage_and_persists_conversation(
     conv = api.get(f"/api/conversations/{body['conversation_id']}", headers=u001).json()
     assert [m["role"] for m in conv["messages"]] == ["user", "assistant"]
     assert conv["messages"][1]["content"] == body["content"]
-    # One query embedding for retrieval + one chat completion, both accounted for.
-    assert (conv["usage"]["chat_calls"], conv["usage"]["embedding_calls"]) == (1, 1)
+    # Every model call is accounted for: since D4 a turn costs one routing call plus the
+    # answer, and retrieval costs one query embedding.
+    assert (conv["usage"]["chat_calls"], conv["usage"]["embedding_calls"]) == (2, 1)
 
     follow_up = api.post(
         "/api/chat",
@@ -65,6 +67,7 @@ def test_chat_returns_answer_usage_and_persists_conversation(
     assert len(conv["messages"]) == 4
 
 
+@pytest.mark.security
 def test_conversation_of_another_user_is_not_found(
     api: httpx.Client, u001: dict[str, str], u003: dict[str, str]
 ) -> None:
@@ -114,6 +117,7 @@ def test_unknown_model_is_rejected_before_anything_is_stored(
     assert resp.json()["error"]["code"] == "unknown_model"
 
 
+@pytest.mark.security
 def test_validation_errors_do_not_echo_input(api: httpx.Client, u001: dict[str, str]) -> None:
     resp = api.post(
         "/api/chat",
