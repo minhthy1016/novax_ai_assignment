@@ -10,6 +10,16 @@
   Payment API") and carries it across page breaks. PDFs have no markup, so headings are
   detected heuristically (standalone short line, numbered "2.1 API Tier" or title case).
   Before this, PDF chunks had no section context at all and page 2 lost page 1's heading.
+- **PDF tables: every row carries its own labels.** Text extraction flattens a table to
+  "Tier 2 - platform 24/7 30 minutes 9,600", column names lines away; the 3B model then read
+  a SEV1 value off the row above (eval case L04). The parser reads each text run's x
+  position, treats lines of ≥3 runs whose columns repeat on the next line as a table (first
+  line = header), and rewrites each row as `Tier 2 - platform (SEV1): Hours = 24/7;
+  Acknowledge within = 10 minutes; ...`, one block per row so a chunk boundary cannot split
+  a row. This is the useful half of what Docling's table serialisation does, for ~80 lines
+  and no model. Limits: ruled tables with born-digital text only - no two-column tables, no
+  merged or multi-line cells, no header repeated for a table continued on the next page, and
+  nothing for scans (Docling's layout model remains the answer there, §6).
 - **Metadata schema:** `documents` = doc_key, version, title, department, classification,
   status (active/superseded/deleted), content hash, embedding model, chunker, source path,
   MIME, document date. Chunks denormalize department + classification (filtered in the same
@@ -59,7 +69,8 @@
   below roughly three cases are not distinguishable. The claim this evaluation supports is
   "heading-aware parent-child beats page-based and small structural chunking", not "64 is the
   optimal child size" or "we beat Docling in general" - Docling's layout strengths (tables,
-  multi-column, scans) are not represented in this corpus yet.
+  multi-column, scans) were not represented in the corpus at that point. `KB-ENG-005` (tables,
+  two columns) was added for that on day 5; see `evaluation/reports/chunking.md`.
 - **Embedding model: `nomic-embed-text` via Ollama (768-d, local)** with its task prefixes
   (`search_document:` / `search_query:`). Documents never leave the machine (required for
   confidential material, D-15), zero marginal cost, 768 dims fit pgvector HNSW. NIM

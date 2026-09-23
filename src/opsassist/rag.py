@@ -25,11 +25,15 @@ ABSTAIN = "I couldn't find this in the approved knowledge available to you."
 SYSTEM_PROMPT = f"""You are OpsAssist, an internal operations assistant for company employees.
 
 Answer the user's question using ONLY the numbered sources in their message.
-- After every factual claim, cite the supporting source like [1] or [2][3].
+- After every factual claim, cite the supporting source by its number in square brackets, \
+like [1] or [2][3]. Write [1], not "source 1".
 - Preserve the certainty of the source exactly. If it says something "was not confirmed", \
 say that it was not confirmed; do not answer with a bare "yes" or "no", which would state it \
 as definitely true or false.
-- If the sources do not contain the answer, reply with exactly: "{ABSTAIN}"
+- If the question asks about two or more separate things (for example "X and Y") and the \
+sources cover only some of them, answer what they cover with citations, then say in one \
+short sentence which of the things asked about they do not cover.
+- If the sources contain none of the answer, reply with exactly: "{ABSTAIN}"
   Do not answer from general knowledge and do not guess.
 - Be concise.
 
@@ -45,6 +49,10 @@ _MARKER = re.compile(r"\[(\d{1,2})\]")
 # Some models (e.g. gpt-oss) cite with full-width / CJK brackets (U+3010/U+3011 or
 # U+FF3B/U+FF3D) instead of ASCII ones. They are normalized to [n] before validation.
 _WIDE_MARKER = re.compile("[\u3010\uff3b](\\d{1,2})[\u3011\uff3d]")
+# Small models also cite in prose - "According to source 1", "source #2 [2]" - which would
+# otherwise leave a correct answer with no citation at all. Rewritten to "source [n]" when n
+# is a source that was provided; any other number is left alone as ordinary text.
+_PROSE_MARKER = re.compile(r"\b(sources?) #?(\d{1,2})\b(?:\s*\[\2\])?", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -100,16 +108,29 @@ def build_messages(
 
 
 def is_abstention(text: str) -> bool:
+    """The fixed abstention, possibly reworded around. An answer that cites a source is not
+    an abstention even if it says part of the question is not covered."""
     norm = " ".join(text.lower().split()).rstrip(".")
-    return (
-        norm.startswith(ABSTAIN.lower().rstrip(".")) or "couldn't find this in the approved" in norm
-    )
+    if norm.startswith(ABSTAIN.lower().rstrip(".")):
+        return True
+    return "couldn't find this in the approved" in norm and not _MARKER.search(text)
+
+
+def normalize_markers(answer: str, sources: int) -> str:
+    """Full-width brackets and prose references ("source 2") become [n] markers."""
+    answer = _WIDE_MARKER.sub(r"[\1]", answer)
+
+    def prose(match: re.Match[str]) -> str:
+        n = int(match.group(2))
+        return f"{match.group(1)} [{n}]" if 1 <= n <= sources else match.group(0)
+
+    return _PROSE_MARKER.sub(prose, answer)
 
 
 def finalize(answer: str, chunks: list[RetrievedChunk]) -> GroundedAnswer:
     """Keep only citation markers that point at a provided source; build citation records
     in order of first use."""
-    answer = _WIDE_MARKER.sub(r"[\1]", answer)
+    answer = normalize_markers(answer, len(chunks))
     if is_abstention(answer):
         return GroundedAnswer(ABSTAIN, [], True, len(_MARKER.findall(answer)))
     invalid = 0
