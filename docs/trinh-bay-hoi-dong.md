@@ -1,6 +1,6 @@
 # OpsAssist — Trợ lý vận hành AI nội bộ
 
-*Tài liệu trình bày cho hội đồng · cập nhật tối 23/09/2026 (ngày 5/6) · review 29/09/2026*
+*Tài liệu trình bày cho hội đồng · cập nhật 24/09/2026 (ngày 6/6) · review 29/09/2026*
 
 ---
 
@@ -137,11 +137,11 @@ make ui                                     # mở console: http://localhost:800
 | D3 | Task 2 — RAG có cách ly phòng ban + đánh giá chunking | ✅ PR #2–#5 |
 | D4 | Task 3+4 — Tool, phê duyệt 2 người, audit, bộ nhớ, upload, rate limit | ✅ PR #6 |
 | D5 | Task 5 — Bộ đánh giá 71 ca, LLM judge, PDF bố cục phức tạp; sửa đọc bảng PDF, trích dẫn, trả lời một phần, gán nguồn | ✅ PR #7, #8, #9 đã merge; chạy lại sạch từ `main`, kết quả cuối đã chốt |
-| D6 | Đề xuất mở rộng trên AWS + chuẩn bị trình bày | 🟡 đề xuất đã viết (D-60) |
+| D6 | Đề xuất mở rộng trên AWS (D-60) có mô hình tính công suất; chuẩn bị trình bày | ✅ đề xuất (PR #11); 🟡 chuẩn bị walkthrough |
 
 ### Kiểm thử
 
-- **184 unit test + 63 integration test** đều pass; lint + mypy (strict) sạch.
+- **186 unit test + 63 integration test** đều pass; lint + mypy (strict) sạch. (Kết quả đánh giá D5 bên dưới được chạy trên commit `7c4236f`, lúc đó là 184 unit test.)
 
 ### Đánh giá 71 ca — lần chạy cuối, sạch, tái lập được
 
@@ -221,12 +221,58 @@ Mọi ca trượt đều in nguyên câu trả lời để người đọc tự 
 
 ## 6. Đề xuất mở rộng (AWS) — tóm tắt
 
-Mục tiêu: **5.000 nhân viên, 1 triệu tài liệu, 100 request đồng thời.**
+Mục tiêu (theo đề bài): **5.000 nhân viên, 1 triệu tài liệu, 100 request AI đồng thời**, nhiều phòng ban, nhiều provider, có cụm GPU. Hạ tầng: **AWS**.
 
-- **Tính toán:** ECS/EKS, mỗi tầng scale độc lập.
-- **Dữ liệu:** Aurora PostgreSQL + pgvector (~140 GB index vector ở 1M tài liệu → phải phân vùng).
-- **Hàng đợi / cache:** SQS + ElastiCache; tài liệu upload lưu S3.
-- **Bảo mật:** Secrets Manager + KMS; **tài liệu confidential chỉ đi tới vLLM tự host trong VPC.**
+**Nguyên tắc:** kiến trúc giữ nguyên, chỉ tách từng tầng để scale độc lập. Các quy tắc đang đúng hôm nay vẫn giữ: cách ly ở tầng lưu trữ, *mô hình đề xuất – backend quyết định*, dữ liệu confidential không rời VPC.
+
+### Con số không gõ tay — sinh ra từ mô hình tính công suất
+
+Mọi con số dưới đây do `evaluation/capacity.py` tính (`make capacity`), mỗi đầu vào ghi rõ **đo được** hay **giả định**. Nếu tài liệu D-60 ghi một con số mà mô hình không còn cho ra, unit test sẽ báo lỗi.
+
+| Đầu vào | Giá trị | Nguồn |
+|---|---|---|
+| Số chunk trên 1.000 token | 18,7 | **đo** bằng chunker thật trên dữ liệu mẫu |
+| Token prompt mỗi câu trả lời | 1.100 | **đo** (p95 của lần chạy D5 cuối) |
+| Tốc độ embedding | 164 chunk/s trên laptop | **đo** |
+| Độ dài tài liệu trung bình | 2.500 token (~5 trang) | giả định |
+| Token đầu ra mỗi câu trả lời | 300 | giả định (mô hình ~20B) |
+| Thông lượng GPU L4 (vLLM) | 1.000 decode / 8.000 prefill token/s | giả định — thay bằng load test |
+
+| Kết quả | Giá trị |
+|---|---|
+| Số chunk ở 1 triệu tài liệu | **~47 triệu** |
+| Index vector (HNSW) toàn bộ · mỗi phòng ban | **~84 GB · ~8,4 GB** |
+| GPU cần ở mức trần 100 request | **10 GPU L4 → 4 máy g6.12xlarge** (dư 1 máy dự phòng) |
+| Tải trần · tải trung bình dự kiến | ~11,8 · ~0,9 câu trả lời/giây (thấp hơn ~13 lần) |
+| Index lần đầu · cập nhật hằng ngày | ~6,5 giờ trên 1 GPU · ~4 phút/ngày |
+
+### Ba quyết định mà con số buộc phải có
+
+1. **Chia bảng vector theo phòng ban.** Index ~84 GB không nằm gọn trong RAM của một máy database; ~8,4 GB mỗi phòng ban thì vừa. Điều này cũng trùng với mô hình cách ly: phòng ban nào đọc phân vùng của phòng ban đó.
+2. **GPU scale theo độ dài hàng đợi, tối thiểu 2 máy.** "100 đồng thời" là mức trần, tải thường thấp hơn ~13 lần, nên không giữ cả cụm GPU chạy suốt ngày.
+3. **Index là dữ liệu dẫn xuất.** Mất index thì dựng lại từ tài liệu trên S3 trong vài giờ; thời gian đó được tính vào ngân sách khôi phục (RTO).
+
+### Sáu vấn đề đề bài yêu cầu
+
+| Vấn đề | Hôm nay (đã có, đã test) | Khi mở rộng |
+|---|---|---|
+| Scale API, việc bất đồng bộ, backpressure | API stateless; giới hạn tần suất theo người gọi | ECS Fargate 3 AZ; **hàng đợi có giới hạn cho từng mô hình**, quá tải trả `429` (*đề xuất, chưa xây*); việc dài chạy qua SQS |
+| Định tuyến mô hình, GPU, batching, fallback | Gateway có retry, fallback, circuit breaker; router chạy mô hình nhỏ riêng | vLLM batching liên tục; scale theo hàng đợi và KV-cache, không theo % GPU; API bên ngoài chỉ làm fallback cho dữ liệu public/internal |
+| Embedding, index tăng dần, chia shard, vòng đời tài liệu | Bỏ qua tài liệu không đổi (hash); thay phiên bản nguyên khối; retry + dead-letter | Index lần đầu trên GPU spot; `halfvec`; chia theo phòng ban; đọc từ replica |
+| Cache, hàng đợi, retry, dead-letter | — | Khóa cache **luôn chứa phạm vi quyền của người hỏi** (thiếu là rò rỉ chéo phòng ban); không cache dữ liệu confidential; SQS giữ nguyên cơ chế retry/DLQ |
+| Cách ly phòng ban từ nạp → truy xuất → trích dẫn → audit | Phòng ban lấy từ quyền người upload; RLS + lọc SQL; confidential chỉ tới mô hình nội bộ; audit nối chuỗi hash | Thêm khóa KMS riêng từng phòng ban; audit xuất sang S3 Object Lock |
+| Sẵn sàng, DR, quan sát, chi phí | Log JSON có correlation ID; metrics Prometheus; ghi usage từng lần gọi | 99,9% cho trả lời, 99,95% cho tool; RPO ≈ 5 phút, RTO ≈ 30 phút; trace OpenTelemetry (*đề xuất*); theo dõi tỉ lệ từ chối / thiếu trích dẫn / sửa nguồn như tín hiệu chất lượng; ngân sách token theo phòng ban |
+
+### Khi quá tải — những điều **không bao giờ** xảy ra
+
+- Không bỏ (shed) lệnh gọi tool hay phê duyệt — đó là thao tác có tác dụng phụ.
+- Không gửi dữ liệu confidential ra API bên ngoài, kể cả khi fallback.
+- Không trả lời mà không có nguồn — nếu mọi mô hình sinh câu đều lỗi, chỉ trả về đoạn trích có trích dẫn.
+- Không thực hiện hành động nếu không ghi được audit.
+
+### Nói thẳng
+
+Đề xuất **chưa được load test**. Các đầu vào "giả định" là số để lập kế hoạch; việc đầu tiên khi triển khai thật là đo lại theo thứ tự: (1) recall và độ trễ pgvector trên một phân vùng ~8 GB, (2) thông lượng vLLM thật, (3) ngưỡng tải mà p95 bắt đầu tăng.
 
 Chi tiết: `docs/decisions/D-60-scale-proposal-aws.md`.
 
@@ -240,5 +286,6 @@ Chi tiết: `docs/decisions/D-60-scale-proposal-aws.md`.
 | `architecture.md` | Kiến trúc kỹ thuật chi tiết |
 | `docs/decisions/` | 35 bản ghi quyết định |
 | `docs/traceability.md` | Truy vết từng yêu cầu → code → test |
+| `evaluation/capacity.py` | Mô hình tính công suất cho đề xuất mở rộng (`make capacity`) |
 | `evaluation/reports/evaluation.md` | Báo cáo đánh giá sinh tự động |
 | `evaluation/reports/analysis.md` | Phân tích tay từng ca lỗi |
