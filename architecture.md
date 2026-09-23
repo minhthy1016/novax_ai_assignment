@@ -171,11 +171,14 @@ Everything lives in [`evaluation/`](evaluation/); the reasoning is [D-50](docs/d
 
 | Suite | What it answers | Command |
 |---|---|---|
-| `cases.jsonl` + `run_eval.py` | 70 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
-| `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`) and untraceable claims, from a **different model family**, called outside the pipeline | part of `make eval` |
-| `chunking_eval.py` | 10 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
-| `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 70 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
+| `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`), per-citation support ("does this passage say this sentence?") and untraceable claims - from a **different model family**, called outside the pipeline, and required to quote the answer before it may call a fact contradicted | part of `make eval` |
+| `chunking_eval.py` | 11 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
+| [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) + `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |
 | `relevance_calibration.py` | Whether similarity alone can separate answerable from out-of-scope (it cannot; measured) | `uv run python -m evaluation.relevance_calibration` |
+
+The suite's axes map one-to-one onto the metrics the brief names; that mapping table is in
+[the README](README.md#evaluation).
 
 Two graders, deliberately: **a rule is compared exactly** (tool choice and arguments,
 authorization, pending-vs-executed, isolation, abstention, citation validity) and **only

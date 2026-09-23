@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import time
 from collections import defaultdict
@@ -58,6 +59,7 @@ class CaseResult:
     checks: dict[str, tuple[bool, str]] = field(default_factory=dict)
     facts: list[dict[str, Any]] = field(default_factory=list)
     unsupported_claims: list[str] = field(default_factory=list)
+    citation_support: list[dict[str, Any]] = field(default_factory=list)
     rank_of_expected: int | None = None
     latency_ms: float = 0.0
     model_latency_ms: float = 0.0
@@ -160,6 +162,14 @@ def outcome_checks(case: dict[str, Any], body: dict[str, Any]) -> dict[str, tupl
             "appeared in the answer",
         )
     return checks
+
+
+def _claim_for(answer: str, number: int) -> str:
+    """The sentence a citation marker sits in - that is the claim it is being made about."""
+    for sentence in re.split(r"(?<=[.!?])\s+", answer):
+        if f"[{number}]" in sentence or f"#{number}" in sentence:
+            return re.sub(r"\[\d+\]|#\d+", "", sentence).strip()
+    return ""
 
 
 def run_case(
@@ -265,6 +275,27 @@ def run_case(
                 }
             )
             result.unsupported_claims += judgement.unsupported
+        # "A citation supports the exact claim": take the sentence each marker is attached
+        # to and ask whether the passage behind that marker really says it. Checking that the
+        # document was retrieved (above) is a weaker claim than checking that the passage a
+        # reader would open contains the statement.
+        # Judge against the whole section the citation resolves to, not the 300-character
+        # snippet the API returns for display: a reader who follows `[1]` lands on the
+        # section. Judging the snippet alone marked correct citations wrong simply because
+        # the sentence fell outside the excerpt.
+        # Key by the full reference, not by document: a citation points at one section, and
+        # keying by doc_key handed the judge whichever section of that document happened to
+        # rank first - which is how four correct citations were first marked unsupported.
+        sections = {h["ref"]: h["context"] for h in hits}
+        for citation in body.get("citations") or []:
+            claim = _claim_for(result.answer, int(citation["number"]))
+            passage = sections.get(citation["ref"]) or str(citation.get("snippet", ""))
+            if not claim or not passage:
+                continue
+            supports = judge.judge_citation(claim, passage)
+            result.citation_support.append(
+                {"ref": citation["ref"], "claim": claim[:160], "supports": supports}
+            )
         if not case.get("reference_facts") and result.answer and not body.get("abstained"):
             judgement = judge.judge_grounding(case["prompt"], result.answer, passages)
             result.unsupported_claims += judgement.unsupported
@@ -299,6 +330,11 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
     unverified = sum(bool(f.get("unverified")) for f in facts)
     judge_errors = sum(bool(f.get("error")) and not f.get("unverified") for f in facts)
     unsupported = [(r.case_id, c) for r in results for c in r.unsupported_claims]
+    citations = [c for r in results for c in r.citation_support if c["supports"] is not None]
+    supporting = sum(c["supports"] for c in citations)
+    bad_citations = [
+        (r.case_id, c) for r in results for c in r.citation_support if c["supports"] is False
+    ]
     ranks = [r.rank_of_expected for r in results if r.rank_of_expected]
     expected_retrieval = [r for r in results if "retrieved_expected" in r.checks]
     mrr = sum(1 / r for r in ranks) / len(expected_retrieval) if expected_retrieval else 0.0
@@ -337,6 +373,8 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         f"| Retrieval MRR (expected source) | {mrr:.3f} |",
         f"| Citations valid (cited ⊆ retrieved) | {rate(*axis('citations_valid'))} |",
         f"| Expected source cited | {rate(*axis('cited_expected'))} |",
+        f"| Citation supports the exact claim (judged, per citation) |"
+        f" {rate(supporting, len(citations))} |",
         f"| Department isolation held | {rate(*axis('isolated'))} |",
         f"| Hallucination guards (`must_not_contain`) | {rate(*axis('absent:'))} |",
         f"| Judge: reference facts supported | {rate(supported, len(facts))} |",
@@ -382,6 +420,10 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         lines += [f"  * {f}" for f in r.failures()]
         if r.answer:
             lines.append(f"  * answered: {r.answer[:180].strip()}")
+        lines.append("")
+    if bad_citations:
+        lines += ["## Citations that did not support their claim", ""]
+        lines += [f"* **{cid}** {c['ref']}: {c['claim']}" for cid, c in bad_citations]
         lines.append("")
     if unsupported:
         lines += ["## Claims the judge could not trace to a source", ""]

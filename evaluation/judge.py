@@ -71,6 +71,19 @@ answer is discarded, so if you cannot quote it, the verdict is "missing".
   hedging, greetings and offers to help; list only factual assertions.
 """
 
+CITATION_PROMPT = """You check one citation.
+
+You are given a PASSAGE that an assistant cited, and the STATEMENT the citation was attached
+to. Decide whether a reader who opened that passage would find the statement supported by it.
+
+Reply with ONLY this JSON object, no prose:
+{"supports": true | false, "note": "one short sentence"}
+
+Be strict about specifics: a passage about deployment windows in general does not support a
+statement about a particular date or number that it does not contain. Wording may differ;
+facts and numbers may not.
+"""
+
 GROUNDING_PROMPT = """You check whether an assistant's answer stays inside its sources.
 
 You are given the question, the answer, and the passages the assistant retrieved.
@@ -219,6 +232,22 @@ class Judge:
             return Judgement(None, [], "", error=f"{type(err).__name__}: {err}")
         claims = [str(c) for c in data.get("unsupported_claims", []) if str(c).strip()]
         return Judgement(None, claims, str(data.get("note", ""))[:200])
+
+    def judge_citation(self, claim: str, snippet: str) -> bool | None:
+        """Does *this* passage support *this* sentence?
+
+        The brief asks that a citation support the exact claim, not merely that the document
+        be relevant. A reader clicks `[1]`, lands on the quoted passage and must find the
+        statement there; anything else is a citation that looks right and is not.
+        Returns True / False, or None when the judge gave no usable answer.
+        """
+        user = f"PASSAGE:\n{snippet}\n\nSTATEMENT:\n{claim}"
+        try:
+            data = self._parse(self._complete(CITATION_PROMPT, user))
+        except Exception:
+            return None
+        verdict = data.get("supports")
+        return bool(verdict) if isinstance(verdict, bool) else None
 
     def answer_without_retrieval(self, question: str) -> str:
         """Control baseline: the same class of model, asked the same question with no

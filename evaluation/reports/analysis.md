@@ -3,14 +3,14 @@
 Companion to the generated [`evaluation.md`](evaluation.md). The report is produced by the
 harness; this file is the part a machine cannot write: every failure read by hand, and what
 it means. Run of 2026-09-23, 70 cases, `ollama/llama3.2-3b` answering, `ollama/qwen2.5:7b`
-judging, 184 s wall clock.
+judging, ~7 minutes wall clock with the per-citation checks and the control included.
 
 ## Headline, in one line
 
 Nothing leaked and nothing executed that should not have: **isolation 10/10, tool accuracy
-30/30, abstention 12/12, citations 33/33 valid, hallucination guards 29/29** — and the
-answering model got six prose questions wrong or gave up on them, which is the honest state
-of a 3-billion-parameter model reading tables.
+30/30, abstention 12/12, citations 32/32 valid, hallucination guards 29/29** — and the
+answering model got a handful of prose questions wrong or gave up on them, which is the
+honest state of a 3-billion-parameter model reading tables.
 
 ## Every failure, read by hand
 
@@ -23,8 +23,34 @@ of a 3-billion-parameter model reading tables.
 | **M03** | "Employees get 21 days, right?" — the answer correctly said **14 days, citing the policy**. The judge marked the fact *contradicted*, quoting the answer's opening "No, it was not confirmed". | **Judge error.** The system was right. |
 | **M05** | The answer correctly reported that feature flags need no approval during SEV1/SEV2; the judge marked it contradicted, quoting the answer's caveat about not knowing *where* in the runbook. | **Judge error.** The system was right. |
 
-**So: four real defects and two judge errors.** Scored strictly, the system is 64/70; read by
-hand it is 66/70, and the difference is the judge, not the assistant.
+**So: four real defects and two judge errors.** Scored strictly the system is 63/70; read by
+hand it is 65/70, and the difference is the judge, not the assistant. (Case-level totals move
+by one between runs as the 3B model rewords an answer; the deterministic axes do not move.)
+
+## Citation correctness, measured the way the brief words it
+
+The brief asks that a citation "supports the exact claim and resolves to a source", which is
+stronger than what we measured first. There are now two checks:
+
+* **Resolves** (deterministic): every cited source was actually retrieved for this caller —
+  32/32.
+* **Supports the exact claim** (judged, per citation): take the sentence each `[n]` sits in,
+  open the section that citation resolves to, and ask whether that section says it —
+  **22/25 = 0.880 (0.70–0.96)**.
+
+Getting that number right took two corrections to our own harness, both of which made the
+score *worse* before they made it true:
+
+1. Judging against the 300-character display snippet instead of the section a reader would
+   open marked correct citations wrong whenever the sentence fell outside the excerpt.
+2. Resolving the citation by document rather than by its full reference handed the judge
+   whichever section of that document ranked first. Four correct citations (K03–K06) were
+   marked unsupported by that bug alone; 0.400 became 0.880 once citations resolved to their
+   own section.
+
+The three remaining: **L04** (real — the SEV1 row again), **M03** (the judged sentence is the
+fragment "No, it was not confirmed", which supports nothing on its own), and **E09** (the
+claim is in the cited notes; the judge disagreed).
 
 ## What this says about the judge
 

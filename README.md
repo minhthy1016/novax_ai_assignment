@@ -554,6 +554,17 @@ names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
 [`analysis.md`](evaluation/reports/analysis.md); the design is
 [D-50](docs/decisions/D-50-evaluation-design.md).
 
+### Where the questions live
+
+| File | What is in it | Used by |
+|---|---|---|
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **70 evaluation cases** — the answering suite. One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) | **41 retrieval gold cases** — question plus the exact source text that answers it (`evidence`, or `evidence_terms` for facts in table cells) | `make test-eval`, `chunking_eval.py` |
+| [`evaluation/answer_eval.py`](evaluation/answer_eval.py) | the six must-abstain questions used by the fast lexical scorer | `make test-eval` |
+
+Adding a case is one line in `cases.jsonl`; nothing else changes. The categories are fixed by
+a test, so a new one has to be deliberate.
+
 **Two graders, on purpose.** Whether a tool was authorized, whether a sensitive action
 executed, whether a forbidden document appeared — those are rules, compared exactly, with no
 model involved. Only prose is judged by a model, and the judge is a **different family**
@@ -562,16 +573,29 @@ confidential answer never sends it off the machine.
 
 | Axis | Result (95% CI) |
 |---|---|
-| Cases fully correct | 64/70 = 0.914 (0.83–0.96) |
+| Cases fully correct | 63/70 = 0.900 (0.81–0.95) |
 | Tool accuracy — choice, arguments, allowed/denied/pending | 30/30 = 1.000 (0.89–1.00) |
 | Abstention and refusal | 12/12 = 1.000 (0.76–1.00) |
 | Department isolation held | 10/10 = 1.000 (0.72–1.00) |
-| Citations valid (every cited source was retrieved) | 33/33 = 1.000 (0.90–1.00) |
-| Expected source cited | 33/33 = 1.000 (0.90–1.00) |
+| Citations valid (every cited source was retrieved) | 32/32 = 1.000 (0.89–1.00) |
+| Expected source cited | 31/31 = 1.000 (0.89–1.00) |
+| **Citation supports the exact claim** (judged, per citation) | 22/25 = 0.880 (0.70–0.96) |
 | Retrieval: expected source in top-4 · MRR | 37/38 = 0.974 · 0.908 |
 | Hallucination guards (`must_not_contain`) | 29/29 = 1.000 (0.88–1.00) |
-| Judge: reference facts supported | 32/38 = 0.842 (0.70–0.93) |
+| Judge: reference facts supported | 31/38 = 0.816 (0.67–0.91) |
 | End-to-end p50 / p95 · mean tokens per case | 1.17s / 2.26s · 438 |
+
+### What the brief asks for, and what measures it
+
+| Brief's metric | Expected evidence | Where it is measured |
+|---|---|---|
+| Answer correctness | reference answer or scored rubric | `reference_facts` per case, one judge verdict each (`supported` / `contradicted` / `missing`) |
+| Retrieval relevance | relevant chunks in top-K, rank-sensitive | `expected_sources` rank in the caller's own `/api/search`, reported as top-4 rate **and MRR** |
+| Citation correctness | citation supports the exact claim and resolves to a source | two checks: every cited source must have been retrieved (exact), **and** the passage behind each marker must support the sentence it is attached to (judged, per citation) |
+| Hallucination / abstention | unsupported claims, correct refusal | judge's untraceable claims + `must_not_contain` guards + a deterministic abstention check per case |
+| Tool accuracy | correct tool, arguments, authorization, confirmation | `expected_tool`, `expected_arguments`, `expected_outcome` (`tool_ok` / `tool_denied` / `tool_pending`), compared exactly |
+| Performance | end-to-end latency and model/provider timing | p50 / p95 end-to-end, mean provider time per case from the attempt records |
+| Efficiency | token or usage count and estimated cost | prompt/completion tokens and estimated cost, per case and per category |
 
 **The six failures, read by hand: four real, two judge errors.** The most interesting is
 `L04` — asked how fast Tier 2 must acknowledge a **SEV1**, the answer said 30 minutes, which
