@@ -1,17 +1,23 @@
 # OpsAssist — AI Operations Assistant
 
-An internal assistant that answers from approved company knowledge and executes controlled
-operational tools, with department isolation, explicit approval for sensitive actions,
-and an auditable trail for every decision.
+**What this is.** OpsAssist is an internal assistant for two jobs: answering questions from
+company documents, and carrying out a small set of approved operational actions. Employees
+ask in plain language; the assistant answers only from documents that person is allowed to
+read, always with a citation, and can check a server, open a ticket or request a VPN profile.
 
-> **Build status (day 4 of 6):** Tasks 1-4 complete. AI gateway; RAG with department
-> isolation; a **LangGraph agent** that routes between small talk, knowledge, tools and
-> refusals; four typed tools with permission checks, a **two-person approval** for sensitive
-> actions, a **hash-chained audit log**, and memory you can inspect and delete. Authorized
-> users can upload documents into their own department. **Next (D5):** the evaluation suite
-> and security tests. See [`docs/traceability.md`](docs/traceability.md) for exactly what is
-> done and how each item is verified; design decisions are in
-> [`architecture.md`](architecture.md).
+**The rule the design rests on:** *the model proposes, the backend decides.* Authentication,
+permissions, data isolation, approvals and the audit trail are enforced in code and in the
+database, never by prompting the model.
+
+> **Status (day 4 of 6):** Tasks 1-4 complete and tested end to end. Days 5-6 add the full
+> evaluation suite and the AWS scale proposal — see [Current status](#current-status).
+>
+> Three documents, three audiences: **this README** is how the system fits together ·
+> [`architecture.md`](architecture.md) is the engineering architecture ·
+> [`docs/decisions/`](docs/decisions/README.md) holds the 30 decision records with their
+> alternatives and measurements. Requirement-by-requirement evidence is in
+> [`docs/traceability.md`](docs/traceability.md).
+
 
 ## Quick start
 
@@ -33,129 +39,171 @@ Expected:
 {"status":"ready","checks":{"postgres":{"ok":true,...},"redis":{"ok":true,...}}}
 ```
 
+
 ## Architecture
 
-### Backend components
-
-Everything shown exists today.
-
 ```mermaid
-flowchart LR
-  client["Client<br/>curl · chat UI"]
-
-  subgraph api["FastAPI · src/opsassist"]
-    mw["middleware.py<br/>request ID · JSON logs · metrics"]
-    auth["auth.py<br/>role-bound JWT → Principal"]
-    routes["api/<br/>chat · stream · search · models · conversations"]
-    policy["policy/access.py<br/>AccessScope from DB permissions"]
-    retrieval["knowledge/retrieval.py<br/>hybrid search · RRF · relevance gate · top-4 sections"]
-    rag["rag.py<br/>grounded prompt · citation check · abstention"]
-    gateway["gateway/<br/>routing · retry · fallback · circuit breaker<br/>egress control · usage per attempt"]
-    providers["providers/<br/>NIM · Claude · Ollama · mock"]
-    agent["agent/ (LangGraph)<br/>route: small talk · knowledge · tool · refuse"]
-    tools["tools/ + policy/<br/>typed schemas · permissions<br/>approvals · hash-chained audit"]
+flowchart TB
+  client["Client<br/>chat UI · curl · Flowise demo"]
+  subgraph api["OpsAssist API (FastAPI)"]
+    direction LR
+    authz["Auth + Policy<br/>who you are, what you may see"]
+    agent["Orchestrator<br/>knowledge · tool · refuse"]
+    tools["Tool control<br/>schemas · approvals"]
   end
+  kb[("Knowledge base<br/>Postgres + pgvector<br/>row-level security")]
+  ops[("Operational systems<br/>servers · tickets · VPN")]
+  llm{{"LLM gateway<br/>NIM · Claude · Ollama · mock"}}
+  audit[("Audit + metrics<br/>hash-chained log")]
+  worker["Ingestion worker<br/>parse · chunk · embed"]
 
-  subgraph worker["Dramatiq worker"]
-    ingest["knowledge/ingest.py<br/>parse · parent-child chunks · embed · versioned swap"]
-  end
-
-  cli["make ingest"]
-  pg[("PostgreSQL 17 + pgvector<br/>row-level security<br/>runtime role opsassist_app")]
-  redis[("Redis<br/>job queue")]
-  models{{"NVIDIA NIM · Anthropic · Ollama (local)"}}
-
-  client --> mw --> auth --> routes
-  routes --> agent
-  agent --> tools --> pg
-  routes --> policy --> retrieval --> pg
-  routes --> rag --> gateway --> providers --> models
-  retrieval -. "query embedding" .-> gateway
-  agent -. "routing call" .-> gateway
-  cli --> redis --> ingest --> pg
-  routes -. "upload" .-> redis
-  ingest -. "passage embeddings" .-> gateway
+  client --> api
+  agent --> kb
+  tools --> ops
+  agent --> llm
+  api --> audit
+  worker --> kb
+  client -. "upload" .-> worker
 ```
 
-| Layer | Owns | Never does |
-|---|---|---|
-| `auth` + `policy` | Who the caller is, what they may read (from the database, not the token or prompt) | Trust a permission carried in the token |
-| `knowledge/retrieval` | Scoped search; SQL filter **and** Postgres RLS in the same transaction | Return a row outside the caller's scope |
-| `rag` | Prompt with escaped, untrusted sources; citation validation; abstention | Give document text any authority |
-| `agent` | Which path a turn takes, and what tool to propose | Decide whether an action is allowed |
-| `tools` + `policy` | Schema validation, permission checks, approvals, audit | Trust a tool name or arguments that a model proposed, without checking |
-| `gateway` | Which model, retries, fallback, what data may leave the machine, usage | Retry a bad request or send confidential context off-box |
-| `providers` | One vendor wire format each | Retry on their own (SDK retries are off) |
+Everything in the diagram exists today. Two properties matter most for other teams:
 
-### Major decisions and the alternatives considered
+- **Knowledge and actions share one permission model.** Retrieval and tools read the same
+  access scope, built from database permissions, so a tool cannot reach what a search would
+  not return.
+- **The LLM is replaceable and never authoritative.** Providers sit behind one gateway with
+  fallback and data-egress rules; nothing the model says grants access or executes anything.
 
-Full reasoning, measurements and consequences for each: [`architecture.md`](architecture.md).
+### Major decisions, and what they were weighed against
 
-| Decision | Chosen | Alternatives considered | Why |
+Full context, measurements and consequences: [`docs/decisions/`](docs/decisions/README.md).
+
+| Decision | Chosen | Alternatives | Why |
 |---|---|---|---|
-| Vector store | pgvector in the primary Postgres | Qdrant, Weaviate | ACLs, versions and vectors stay in one transaction, and row-level security applies to retrieval (D-01) |
-| Chunking | parent-child 64/256 | per page, fixed window, structural, hierarchical, Docling HybridChunker | measured: recall@1 0.897 → 0.971 at similar context cost (D-20) |
-| Retrieval | vector + full-text, RRF fused, similarity gate | vector only, cross-encoder reranker | full-text lifts recall@1 by 0.07; a reranker adds a model to every request for no measured gain at this size (D-21) |
-| Isolation | SQL filter **and** Postgres RLS, separate confidential table | filter in application code only | a query that forgets the filter still returns nothing; found because superuser access silently disabled RLS (D-17, D-22) |
-| Agent orchestration | LangGraph with a Postgres checkpointer | hand-written state machine | durable pause/resume for two-person approval; costs one dependency and one routing call (D-26) |
-| Routing model | its own fast local model | the user's answer model | measured: a hosted model timed out at 60 s and every turn silently degraded to knowledge-only (D-28) |
-| Provider access | in-house gateway | LiteLLM, direct SDK calls | fallback only before the first streamed token, per-model breakers, egress control and per-attempt usage are ours to defend (D-10) |
-| Model catalog | TOML config + routes | hard-coded model names | swapping models or providers is a config change; the catalog is validated at startup (D-10) |
+| Knowledge store | pgvector inside the main Postgres | Qdrant, Weaviate | permissions, versions and vectors stay in one transaction, and row-level security covers retrieval ([D-01](docs/decisions/D-01-pgvector-in-the-primary-postgres-instead-of-a-de.md)) |
+| Chunking | parent-child (small match, section context) | per page, fixed window, Docling HybridChunker | measured: recall@1 0.897 → 0.971 at similar context cost ([D-20](docs/decisions/D-20-ingestion-parsing-metadata-chunking-embeddings.md)) |
+| Isolation | query filter **and** database row-level security | filter in application code only | a query that forgets the filter still returns nothing ([D-17](docs/decisions/D-17-least-privilege-runtime-database-role-security-f.md), [D-22](docs/decisions/D-22-department-isolation-application-filter-row-leve.md)) |
+| Orchestration | LangGraph with durable state | hand-written state machine | pause and resume for two-person approval, surviving restarts ([D-26](docs/decisions/D-26-agent-orchestration-on-langgraph.md)) |
+| Provider access | in-house gateway | LiteLLM, direct SDK calls | fallback, circuit breaking, egress rules and usage accounting stay ours to defend ([D-10](docs/decisions/D-10-provider-abstraction-and-routing.md), [D-11](docs/decisions/D-11-retry-fallback-and-circuit-breaking-rules.md)) |
+| Routing model | its own small local model | the user's answer model | measured: a hosted model timed out at 60 s and every turn silently degraded ([D-28](docs/decisions/D-28-the-router-runs-on-its-own-fast-model-measured.md)) |
 
-### End-to-end: a question
+
+## How a request works
 
 ```mermaid
 sequenceDiagram
   autonumber
-  actor user as User
-  participant api as FastAPI
-  participant db as Postgres + pgvector (RLS)
-  participant gw as LLM gateway
-  participant llm as Model (NIM · Claude · Ollama)
+  actor user as Employee
+  participant api as OpsAssist API
+  participant kb as Knowledge / tools
+  participant llm as Model
 
-  user->>api: POST /api/chat (Bearer JWT)
-  api->>db: load user, check token's user + role, build AccessScope
-  api->>db: save the question, load conversation history
-  api->>gw: embed question (nomic-embed-text, local)
-  api->>db: set_config(scope) + vector and full-text search, one transaction
-  db-->>api: only rows the scope allows (SQL filter + RLS)
-  api->>api: fuse (RRF), relevance gate, collapse to top-4 sections
-  alt nothing relevant
-    api-->>user: fixed "couldn't find this" answer, no model call
-  else sources found
-    api->>gw: grounded prompt, sources as escaped data, egress allowed only without confidential text
-    gw->>llm: chosen model first, others as fallback
-    llm-->>gw: answer with [n] citation markers
-    gw->>db: usage row per attempt (tokens, latency, cost, outcome)
-    api->>api: keep only citations that point at retrieved sources
-    api->>db: save answer + citations
-    api-->>user: answer, citations (title, version, section), model, usage
+  user->>api: question or request (token)
+  api->>api: authenticate, then build the access scope from DB permissions
+  api->>llm: route this turn (small model)
+  alt knowledge
+    api->>kb: search within the scope (SQL filter + row-level security)
+    kb-->>api: only permitted passages, or nothing
+    api->>llm: answer using these sources only
+    llm-->>api: answer with citations
+    api->>api: validate citations, abstain if unsupported
+  else tool
+    api->>api: validate arguments, check permission
+    opt sensitive
+      api-->>user: proposal + approval request (pauses, resumable)
+    end
+    api->>kb: execute once
+  else refuse
+    api-->>user: explain why it cannot be done
   end
+  api->>api: append audit record and usage
+  api-->>user: answer, citations, tool result
 ```
 
-### End-to-end: a document
+If nothing relevant is found, the assistant says so **without calling a model** — an
+unsupported answer is not possible on that path.
 
-```mermaid
-flowchart LR
-  file["PDF · Markdown · text<br/>+ metadata (department, classification)"]
-  queue["make ingest<br/>job row + Redis message"]
-  guard{"inside knowledge root?<br/>metadata valid?"}
-  parse["parse<br/>headings path across pages"]
-  chunk["parent-child chunks<br/>~64-token children, ≤256-token sections"]
-  embed["embed children<br/>nomic, local"]
-  swap["one transaction:<br/>supersede old version,<br/>insert new chunks"]
-  shared[("chunks<br/>public · internal")]
-  conf[("confidential_chunks<br/>separate index")]
-  failed["job failed<br/>no retry"]
-  dlq["retries 1-30 s ×3,<br/>then dead-letter queue"]
+## Component responsibilities
 
-  file --> queue --> guard
-  guard -- no --> failed
-  guard -- yes --> parse --> chunk --> embed --> swap
-  swap -- "public · internal" --> shared
-  swap -- "confidential" --> conf
-  embed -. "transient error" .-> dlq
-```
+| Component | Responsible for | Deliberately does **not** |
+|---|---|---|
+| Client (chat UI, Flowise) | Talking to the user, showing citations and approval prompts | Make any authorization decision; hold credentials |
+| API (auth + policy) | Verifying the token, resolving the user's permissions from the database | Trust permissions carried in a token or a prompt |
+| Orchestrator (agent) | Choosing the path: small talk, knowledge, tool or refusal | Decide whether an action is allowed |
+| Retrieval | Finding relevant passages inside the caller's scope | Decide permissions on its own; return anything unscoped |
+| Policy + tools | Validating arguments, checking permissions, approvals, executing | Run shell, SQL or arbitrary URLs; trust model-supplied arguments |
+| LLM gateway | Model choice, retries, fallback, egress rules, usage accounting | Authorize anything; send confidential text off-box |
+| Ingestion worker | Parsing, chunking, embedding, versioned re-indexing | Accept files from outside the knowledge root |
+| Audit | Recording every security-relevant decision, tamper-evidently | Make business decisions or alter records |
+
+## Design principles
+
+1. **Security is enforced outside the model.** Permissions, approvals and audit are code.
+2. **People only retrieve what they may read** — enforced twice, in the query and in the
+   database.
+3. **Tools are typed, allowlisted and policy-checked.** There is no deploy, shell or SQL tool.
+4. **Sensitive actions need a second person**, confirming the exact proposed action.
+5. **Every security-relevant decision is auditable**, in a log that cannot be edited in place.
+6. **Providers are replaceable**, and confidential material never leaves the machine.
+
+Each principle is implemented by specific decisions, recorded with their alternatives in
+[`docs/decisions/`](docs/decisions/README.md).
+
+## Security and data boundaries
+
+The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
+Run them all with `make test-security` (91 tests).
+
+**Identity.** A bearer token names the user *and their role*; both are re-checked against the
+database on every request, so a role change or a deactivated account is refused immediately.
+Permissions are never read from the token. Everything under `/api` requires a token, proven
+by a test that walks the API schema.
+
+**What a person may see.** An access scope is built from current database permissions:
+department documents, plus confidential ones only with the extra permission, plus
+company-wide documents. Retrieval applies that scope **twice** — in the query, and in
+PostgreSQL row-level security under a database role that cannot bypass it. Confidential
+documents live in a separate index that is not even queried without the permission.
+
+**What a person may do.** Each tool declares the permission it needs, checked before
+execution and independently of anything the model proposed; arguments are validated against
+a typed schema. Sensitive actions (VPN profiles) are proposed, not executed: a **different**
+person holding the approve permission must confirm the exact action hash, and it runs once.
+There is no deploy, shell or SQL tool.
+
+**What may leave the machine.** Every provider declares whether requests leave our boundary.
+The most sensitive classification in the retrieved context decides what is allowed;
+**confidential material never reaches an external model**, and if no on-box model is
+available the request fails rather than leaking. Document embeddings are always computed
+locally.
+
+**Untrusted content.** Retrieved text is escaped data with no authority; citations are
+validated against what was actually retrieved; tool results are rendered from real data, so
+a success that did not happen cannot be described. An instruction inside a document — or
+pasted by a user — cannot execute anything, because tools are authorized outside the model.
+
+**Evidence.** Every decision (allow, deny, pending, executed, error) is appended to a
+hash-chained audit log in the same transaction as the action. The runtime role may insert
+and read it but not update or delete it, and `GET /api/audit/verify` detects any edit.
+Arguments, results and logs are redacted; provider keys live only in environment variables.
+
+## Current status
+
+| Area | Status |
+|---|---|
+| Knowledge retrieval with citations | ✅ |
+| Department isolation (query + database) | ✅ |
+| Confidential isolation (separate index, on-box models only) | ✅ |
+| Tool authorization and typed schemas | ✅ |
+| Two-person approval for sensitive actions | ✅ |
+| Tamper-evident audit trail | ✅ |
+| Provider fallback, streaming, usage accounting | ✅ |
+| Document upload by authorized users | ✅ |
+| Persistent memory (inspect and delete) | ✅ |
+| Evaluation benchmark | 🟡 34-case gold set + answer scoring; the 30+ case suite with an LLM judge is day 5 |
+| Production SSO / OIDC | 🟡 dev token issuer stands in |
+| AWS deployment and scale-out | 🟡 proposal is day 6 |
+
 
 ## Demo walkthrough (the six required items)
 
@@ -305,78 +353,6 @@ Expected: U001 gets the "couldn't find this" answer and `[]` hits - not even the
 U004 gets `["KB-HR-002"]`; NIM and Claude are `skipped:egress_not_permitted` and
 `ollama/llama3.2-3b` answers.
 
-## Security model
-
-**Nothing the model says is trusted.** It can propose an answer or a tool call; every
-decision that matters is made in code, against the database.
-
-### Authentication
-- Bearer JWT with a pinned algorithm, audience and issuer; `alg=none` and foreign-signed
-  tokens are rejected.
-- The token carries the user **and their role**, and both are re-checked on every request:
-  a role change or a deactivated user is rejected immediately (401), not at token expiry.
-- Permissions are **never** read from the token. They come from the database per request.
-- Everything under `/api` requires a token; a test walks the OpenAPI schema so a new route
-  cannot silently skip authentication. Only `/healthz`, `/readyz`, `/metrics` and the
-  dev-only token issuer are public.
-
-### Authorization
-- An `AccessScope` is built from current database permissions: `docs:<dept>` for internal
-  material, plus `<dept>:confidential` for confidential material, public for everyone.
-- Each tool declares the permission it needs; the check runs **before** execution and is
-  independent of what the model proposed. Arguments are validated against a typed schema
-  with unknown fields rejected.
-- Field-level policy: server status is visible with `server:read`, but CPU and memory only
-  to the owning department and IT Operations.
-- Sensitive actions (VPN profiles) need **two people**: the approver must hold
-  `vpn:approve`, be a different person than the requester, and confirm the **action hash**
-  of the exact proposed arguments. Execution happens once, guarded by a row lock.
-- Uploads are confined to the uploader's own department (`kb:write:<department>`);
-  classification cannot be raised, and no user can publish company-wide.
-
-### Knowledge isolation
-- Retrieval is scoped **at query time**, in two layers inside one transaction: the SQL
-  filter, and Postgres row-level security driven by per-transaction settings. Missing
-  settings mean nothing is readable (fail closed).
-- The API, worker and ingestion connect as a **non-superuser role** that cannot bypass RLS;
-  only migrations use the owner. (Superusers bypass RLS even with `FORCE` — this was found
-  by a test and fixed.)
-- Confidential documents live in a **separate table** with its own policy, which is not even
-  queried unless the caller's scope includes a confidential department.
-- Tools reuse the same scope, so `search_internal_docs` can never widen access.
-
-### Data egress
-- Every provider declares whether requests leave the machine. The **most sensitive
-  classification in the retrieved context** decides what is allowed, compared against
-  `OPSASSIST_EGRESS_MAX_CLASSIFICATION` (default `internal`).
-- **Confidential context never reaches an external model.** Hosted providers are skipped and
-  reported as `skipped:egress_not_permitted`; if no on-box model is available, the request
-  fails rather than leaking. Document embeddings are always computed locally.
-
-### Untrusted content
-- Retrieved text is placed in escaped `<source>` blocks with no authority; a document cannot
-  close its element or forge a system block.
-- Citations are validated against the sources actually retrieved; invalid markers are
-  removed and counted.
-- Tool results are rendered from real data, never summarized by a model, so a success that
-  did not happen cannot be described.
-- An instruction inside a document (or pasted by a user) cannot execute anything: tools are
-  authorized outside the model, and sensitive actions still require the second person.
-
-### Audit and secrets
-- Every policy decision — allow, deny, pending, executed, error — is appended to a
-  **hash-chained** audit log in the same transaction as the action, so a result cannot exist
-  without its record.
-- The runtime role has INSERT and SELECT on the audit log but **no UPDATE or DELETE**;
-  `GET /api/audit/verify` detects any edit and reports the first broken record. Users read
-  only their own records.
-- Arguments and results are redacted before storage; logs redact secret-shaped fields and no
-  longer include local variables in tracebacks; provider keys live only in environment
-  variables and never reach prompts, responses or logs.
-
-```bash
-make test-security     # 91 tests covering everything in this section
-```
 
 ## Model providers
 
@@ -396,6 +372,7 @@ With no keys and no Ollama, the stack still runs and every test passes on the mo
 **Credentials policy:** keys are read from environment variables named in the catalog and
 never written to tracked files, logs, API responses or model prompts. A provider without a
 key is disabled and shown as unavailable in `GET /api/models`.
+
 
 ## API usage
 
@@ -435,6 +412,7 @@ curl -s localhost:8000/api/conversations/<conversation_id> -H "$AUTH" | jq
 Errors share one envelope: `{"error": {"code", "message", "request_id"}, "attempts": [...]}`.
 Provider error text is never returned to the client; `attempts` shows model, outcome, error
 type and latency only.
+
 
 ## Knowledge and retrieval
 
@@ -476,6 +454,7 @@ because one case moves a rate by ~0.03:
 Child size barely matters: 32, 64, 96 and 128 tokens all score Recall@1 0.971 in hybrid mode.
 The gain comes from heading-aware parents, not from small children.
 
+
 ## Tests
 
 ```bash
@@ -502,23 +481,6 @@ uv run python -m evaluation.relevance_calibration    # relevance-gate calibratio
 uv run python -m evaluation.chunking_eval            # chunking strategies -> evaluation/reports/
 ```
 
-## Repository layout
-
-```
-src/opsassist/     application code
-  api/             HTTP routes and contracts
-  gateway/         model catalog, routing, retry/fallback, usage
-  providers/       one adapter per model vendor
-  knowledge/       parsing, chunking, ingestion, retrieval
-  policy/          access scope
-migrations/        Alembic migrations (one per feature, in build order)
-sample_data/       fictional seed data from the brief (+ candidate-added documents)
-tests/             unit/ (no services) and integration/ (compose stack)
-evaluation/        gold sets, evaluation scripts, reports
-scripts/           sample PDF generator
-docs/              traceability matrix
-architecture.md    decisions with alternatives, security model, scale proposal
-```
 
 ## Operations
 
@@ -538,6 +500,26 @@ Every response carries `X-Request-ID`; every log line is JSON and includes it.
 Database: `localhost:5432`, database `opsassist`. The API and worker connect as
 `opsassist_app` (not a superuser, cannot bypass row-level security); migrations and seeding
 use the owner. `docker compose exec postgres psql -U opsassist -d opsassist` opens a shell.
+
+
+## Repository layout
+
+```
+src/opsassist/     application code
+  api/             HTTP routes and contracts
+  gateway/         model catalog, routing, retry/fallback, usage
+  providers/       one adapter per model vendor
+  knowledge/       parsing, chunking, ingestion, retrieval
+  policy/          access scope
+migrations/        Alembic migrations (one per feature, in build order)
+sample_data/       fictional seed data from the brief (+ candidate-added documents)
+tests/             unit/ (no services) and integration/ (compose stack)
+evaluation/        gold sets, evaluation scripts, reports
+scripts/           sample PDF generator
+docs/              traceability matrix
+architecture.md    decisions with alternatives, security model, scale proposal
+```
+
 
 ## Known limitations
 
@@ -591,6 +573,7 @@ checkable in the code.
 - NVIDIA NIM on the free tier averaged 26 s per call and timed out at 60 s several times;
   demos use the local model.
 
+
 ## Future improvements
 
 - Integrate the corporate IdP (OIDC) and remove the development token issuer.
@@ -601,3 +584,4 @@ checkable in the code.
   the API.
 - Richer observability: tool-call metrics, per-department cost analytics, and traces linked
   to evaluation runs.
+
