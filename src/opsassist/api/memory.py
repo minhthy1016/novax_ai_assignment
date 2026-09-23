@@ -40,7 +40,9 @@ async def list_(request: Request, principal: CurrentPrincipal) -> Any:
 async def put(request: Request, body: MemoryPut, principal: CurrentPrincipal) -> Any:
     try:
         async with request.app.state.session_factory() as session, session.begin():
-            row = await put_memory(session, principal.user_id, body.key, body.value)
+            row = await put_memory(
+                session, principal.user_id, body.key, body.value, request.app.state.settings
+            )
             out = _out(row)
     except MemoryRejected as exc:
         return error_response(400, "memory_rejected", str(exc), request_id_of(request))

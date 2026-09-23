@@ -103,6 +103,7 @@ async def answer_from_knowledge(
     ctx: CallContext,
     model_choice: str | None,
     params: ChatParams,
+    allow_egress: bool = True,
 ) -> AnswerResult:
     """Grounded answer, or a fixed abstention when nothing relevant was retrieved."""
     if not retrieval.chunks:
@@ -110,9 +111,7 @@ async def answer_from_knowledge(
         return AnswerResult(text=answer.text, answer=answer, retrieval=retrieval, route="knowledge")
     messages = build_messages(question, retrieval.chunks, history)
     try:
-        outcome = await gateway.chat(
-            model_choice, messages, params, ctx, allow_egress=not retrieval.has_confidential
-        )
+        outcome = await gateway.chat(model_choice, messages, params, ctx, allow_egress=allow_egress)
     except GatewayError as err:
         return AnswerResult(text="", answer=abstention(), retrieval=retrieval, error=err)
     answer = finalize(outcome.result.content, retrieval.chunks)

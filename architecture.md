@@ -181,15 +181,17 @@ decision → consequences.
   same traffic would cost on a paid endpoint).
 - Usage writes are shielded from cancellation and never fail the user's request.
 
-### D-15 Data-classification routing to providers
-- Every provider declares `data_egress`. When the retrieved context contains a
-  `confidential` chunk, the gateway call is made with `allow_egress = false`: hosted
-  providers (NIM, Claude) are skipped and reported as `skipped:egress_not_permitted`, so only
-  on-box models (Ollama) see confidential text. If none is available the request fails
-  (503) rather than leaking. Verified live: U004's compensation question was answered by
-  Ollama with NIM and Claude visibly skipped.
-- `internal` material may go to hosted providers (assumes a data-processing agreement);
-  tightening this is one flag per provider.
+### D-15 Data-classification routing to providers (confirmed with the team lead)
+- Every provider declares `data_egress`. The context's **most sensitive classification**
+  decides whether a call may leave the box, compared against
+  `OPSASSIST_EGRESS_MAX_CLASSIFICATION` (default `internal`).
+- **Confidential context never reaches an external model** - confirmed explicitly for Claude
+  and similar services. Hosted providers are skipped and reported as
+  `skipped:egress_not_permitted`, so only on-box models (Ollama) see the text; if none is
+  available the request fails (503) rather than leaking. Verified live: U004's compensation
+  question was answered by Ollama with NIM and Claude visibly skipped.
+- `internal` material may go to hosted providers today. Setting the variable to `public`
+  keeps internal documents on-box as well - one environment variable, no code change.
 
 ### D-17 Least-privilege runtime database role (security finding)
 - **Finding:** the first RLS test showed an unscoped query returning *every* chunk,
@@ -415,8 +417,22 @@ decision → consequences.
   older ones. The summary prompt treats the transcript as data and is best-effort: if the
   model is unavailable the previous summary stands and the conversation still works.
 
+### Confirmed with the team lead (2026-09-23)
+| Question | Answer | Effect on the build |
+|---|---|---|
+| Is `vpn:approve` global or per department? | Only the IT Head grants VPN access for other departments | Matches: `vpn:approve` is a central authority, not department-scoped. In the fixture only U002 holds it, so U002 plays that role; requester and approver must still differ. |
+| What may persistent memory store? | "any will do" | Kept the allowlist (the brief requires "selected, permitted facts" and no secrets), now extendable per deployment through `OPSASSIST_MEMORY_EXTRA_KEYS`. |
+| May internal/confidential documents go to Claude or similar? | Confidential must not be exposed to external models; use roles and permissions | Implemented as D-15: the context's highest classification is compared against `OPSASSIST_EGRESS_MAX_CLASSIFICATION`. |
+| Should RAG enforce permissions at retrieval time? | "suggest your idea" | Our answer: yes, and in two layers - the SQL filter *and* Postgres row-level security under a non-superuser role, with confidential material in a separate table (D-17, D-22). Filtering after retrieval would already have put the text in memory next to the model. |
+| Which cloud for the scale proposal? | AWS (used in production today) | The day-6 proposal targets AWS concretely (D-50 note below). |
+
 ### Pending decisions (filled on the day they are made)
 - D-50 evaluation design: rubric, judge model, control baselines _(day 5)_
+- D-60 **scale proposal on AWS** _(day 6)_: ECS/EKS for the API and workers, Aurora
+  PostgreSQL with pgvector (or OpenSearch if the vector tier outgrows it), ElastiCache or
+  SQS for the queue, S3 for uploaded documents, Secrets Manager + KMS, OIDC through the
+  corporate IdP. Confidential traffic must stay inside the VPC, which points at self-hosted
+  inference (vLLM on GPU nodes) for that class rather than a managed model API.
 
 ## 4. Security model
 _TBD (day 4)._ Threat model, trust boundaries, and how each critical finding is prevented.

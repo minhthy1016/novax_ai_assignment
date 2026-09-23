@@ -103,6 +103,13 @@ class RetrievalResult:
     def has_confidential(self) -> bool:
         return any(c.classification == "confidential" for c in self.chunks)
 
+    @property
+    def max_classification(self) -> str | None:
+        """The most sensitive class in the context; decides whether it may leave the box."""
+        rank = {"public": 0, "internal": 1, "confidential": 2}
+        classes = [c.classification for c in self.chunks]
+        return max(classes, key=lambda c: rank.get(c, 2)) if classes else None
+
 
 async def apply_scope(session: AsyncSession, scope: AccessScope) -> None:
     """Session settings read by the RLS policies (transaction-local)."""

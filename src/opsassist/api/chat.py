@@ -278,6 +278,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         ctx=ctx,
         model_choice=prep.model_choice,
         params=params,
+        allow_egress=request.app.state.settings.allows_egress(retrieval.max_classification),
     )
     if result.error is not None:
         await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
@@ -504,7 +505,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                 messages,
                 params,
                 ctx,
-                allow_egress=not retrieval.has_confidential,
+                allow_egress=request.app.state.settings.allows_egress(retrieval.max_classification),
             )
             async with aclosing(stream_events) as stream:
                 async for event in stream:

@@ -283,3 +283,56 @@ def test_uploaded_markdown_gets_server_authored_metadata(tmp_path: Path) -> None
     assert "document_id: KB-HR-101" in rendered
     assert "uploaded by U004" in rendered
     assert rendered.strip().endswith("Body text.")
+
+
+# ------------------------------------------------------------------ egress policy
+
+
+def test_confidential_context_never_leaves_the_box_and_the_bar_is_configurable() -> None:
+    """Team lead: confidential documents must not reach an external model. Internal material
+    may, unless the deployment lowers the bar to public-only."""
+    from opsassist.config import Settings
+
+    default = Settings(env="test")
+    assert default.allows_egress("public") and default.allows_egress("internal")
+    assert not default.allows_egress("confidential")
+    assert default.allows_egress(None)  # no retrieved context at all
+
+    strict = Settings(env="test", egress_max_classification="public")
+    assert strict.allows_egress("public")
+    assert not strict.allows_egress("internal") and not strict.allows_egress("confidential")
+
+
+def test_context_classification_is_the_most_sensitive_chunk() -> None:
+    from opsassist.knowledge.retrieval import RetrievalResult, RetrievedChunk
+
+    def chunk(classification: str) -> RetrievedChunk:
+        return RetrievedChunk(
+            chunk_id=1,
+            table="chunks",
+            doc_key="KB-X-001",
+            version=1,
+            title="t",
+            department="hr",
+            classification=classification,
+            locator="¶1",
+            content="c",
+            context="c",
+            doc_updated_at="2026-01-01",
+            similarity=0.9,
+            fts_rank=None,
+            score=0.1,
+        )
+
+    def result(*classes: str) -> RetrievalResult:
+        return RetrievalResult(
+            chunks=[chunk(c) for c in classes],
+            candidates=len(classes),
+            below_threshold=0,
+            latency_ms=1.0,
+            embedding_model="m",
+        )
+
+    assert result("public", "internal").max_classification == "internal"
+    assert result("public", "confidential", "internal").max_classification == "confidential"
+    assert result().max_classification is None

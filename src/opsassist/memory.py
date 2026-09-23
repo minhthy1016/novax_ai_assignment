@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from opsassist.config import Settings
 from opsassist.db.models import Conversation, Message, UserMemory
 from opsassist.gateway.gateway import CallContext, GatewayError, LLMGateway
 from opsassist.knowledge.upload import SECRET_PATTERNS
@@ -39,10 +40,17 @@ class MemoryRejected(ValueError):
     pass
 
 
-def validate(key: str, value: str) -> str:
-    if key not in ALLOWED_KEYS:
+def allowed_keys(settings: Settings | None = None) -> dict[str, str]:
+    """Built-in preferences plus any the deployment adds (OPSASSIST_MEMORY_EXTRA_KEYS)."""
+    extra = (settings.memory_extra_keys if settings else "") or ""
+    return ALLOWED_KEYS | {k.strip(): "preference" for k in extra.split(",") if k.strip()}
+
+
+def validate(key: str, value: str, settings: Settings | None = None) -> str:
+    allowed = allowed_keys(settings)
+    if key not in allowed:
         raise MemoryRejected(
-            f"{key!r} is not a storable preference; allowed: {', '.join(sorted(ALLOWED_KEYS))}"
+            f"{key!r} is not a storable preference; allowed: {', '.join(sorted(allowed))}"
         )
     value = value.strip()
     if not value or len(value) > MAX_VALUE_CHARS:
@@ -59,8 +67,10 @@ async def list_memories(session: AsyncSession, user_id: str) -> list[UserMemory]
     return list(rows.all())
 
 
-async def put_memory(session: AsyncSession, user_id: str, key: str, value: str) -> UserMemory:
-    value = validate(key, value)
+async def put_memory(
+    session: AsyncSession, user_id: str, key: str, value: str, settings: Settings | None = None
+) -> UserMemory:
+    value = validate(key, value, settings)
     existing = await session.scalar(
         select(UserMemory).where(UserMemory.user_id == user_id, UserMemory.key == key)
     )
@@ -68,7 +78,11 @@ async def put_memory(session: AsyncSession, user_id: str, key: str, value: str) 
         existing.value = value
         return existing
     row = UserMemory(
-        user_id=user_id, key=key, value=value, category=ALLOWED_KEYS[key], source="explicit"
+        user_id=user_id,
+        key=key,
+        value=value,
+        category=allowed_keys(settings)[key],
+        source="explicit",
     )
     session.add(row)
     await session.flush()
