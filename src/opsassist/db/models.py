@@ -3,7 +3,8 @@
 Tables arrive with the features that own them, each in its own migration, so the schema
 history mirrors the build order: 0001 identity + inventory, 0002 conversations + usage,
 0003 per-conversation model choice, 0004 knowledge index with row-level security,
-0005 least-privilege runtime role, 0006 parent-child chunk context.
+0005 least-privilege runtime role, 0006 parent-child chunk context,
+0007 tools, approvals, hash-chained audit, memory.
 """
 
 from __future__ import annotations
@@ -85,6 +86,9 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str | None] = mapped_column(Text)
+    # Rolling summary of turns older than summary_upto_seq (token-budget strategy).
+    summary: Mapped[str | None] = mapped_column(Text)
+    summary_upto_seq: Mapped[int | None] = mapped_column(BigInteger)
     # The user's current model choice; switching models mid-conversation updates it and the
     # full history carries over to the new model.
     model_id: Mapped[str | None] = mapped_column(Text)
@@ -180,6 +184,7 @@ class Document(Base):
     status: Mapped[str] = mapped_column(Text, default="active")
     doc_updated_at: Mapped[date] = mapped_column(Date)
     embedding_model: Mapped[str] = mapped_column(Text)
+    uploaded_by: Mapped[str | None] = mapped_column(Text)  # NULL = operator-ingested
     chunker: Mapped[str | None] = mapped_column(Text)  # chunking config the version was built with
     chunk_count: Mapped[int]
     ingested_at: Mapped[datetime] = mapped_column(
@@ -234,6 +239,98 @@ class IngestionJob(Base):
     doc_key: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int | None]
     detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# --------------------------------------------------------------------------- tools & audit
+
+
+class AuditLog(Base):
+    """Append-only, hash-chained record of every policy decision and tool execution."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    request_id: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[str] = mapped_column(Text)
+    actor_role: Mapped[str] = mapped_column(Text)
+    event: Mapped[str] = mapped_column(Text)
+    tool: Mapped[str | None] = mapped_column(Text)
+    arguments: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    decision: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    pending_action_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    action_hash: Mapped[str | None] = mapped_column(Text)
+    prev_hash: Mapped[str] = mapped_column(Text)
+    hash: Mapped[str] = mapped_column(Text, unique=True)
+
+
+class PendingAction(Base):
+    """A sensitive action proposed by one user, awaiting a different authorized approver."""
+
+    __tablename__ = "pending_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    requester_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    tool: Mapped[str] = mapped_column(Text)
+    arguments: Mapped[dict[str, object]] = mapped_column(JSONB)
+    summary: Mapped[str] = mapped_column(Text)
+    action_hash: Mapped[str] = mapped_column(Text)
+    requires_permission: Mapped[str] = mapped_column(Text)
+    approve_permission: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="pending")
+    approver_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    request_id: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(Text)
+    details: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="open")
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    idempotency_key: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VpnProfile(Base):
+    __tablename__ = "vpn_profiles"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    employee_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    duration_days: Mapped[int]
+    requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    approved_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    pending_action_id: Mapped[uuid.UUID] = mapped_column(Uuid, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class UserMemory(Base):
+    """Persistent, user-inspectable facts. Only allowed categories; never secrets."""
+
+    __tablename__ = "user_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    category: Mapped[str] = mapped_column(Text)
+    key: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, default="explicit")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

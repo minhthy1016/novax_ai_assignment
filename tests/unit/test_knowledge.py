@@ -229,3 +229,35 @@ def test_mock_model_answers_grounded_prompts_with_a_citation() -> None:
     reply = default_responder(messages)
     assert reply == "Deploy on Tuesday. [1]"
     assert isinstance(messages[0], ChatMessage) and messages[0].role == "system"
+
+
+# ------------------------------------------------------------------ tool result rendering
+
+
+def test_tool_results_are_rendered_from_real_data_only() -> None:
+    from opsassist.agent.service import describe_tool_result
+
+    text = describe_tool_result(
+        "get_server_status",
+        {
+            "server_id": "web-prod-03",
+            "environment": "production",
+            "owner_department": "engineering",
+            "status": "healthy",
+            "last_check": "2026-09-21T09:15:00Z",
+            "cpu_pct": 37.0,
+            "memory_pct": 62.0,
+        },
+    )
+    assert "web-prod-03" in text and "healthy" in text and "37.0%" in text
+
+
+def test_partial_tool_payloads_do_not_break_rendering() -> None:
+    """A duplicate ticket carries no severity; a missing field must not fail the request."""
+    from opsassist.agent.service import describe_tool_result
+
+    text = describe_tool_result(
+        "create_support_ticket", {"ticket_id": "INC-1042", "status": "open", "duplicate": True}
+    )
+    assert "INC-1042" in text and "not" in text.lower()
+    assert "severity" not in describe_tool_result("create_support_ticket", {"ticket_id": "INC-1"})

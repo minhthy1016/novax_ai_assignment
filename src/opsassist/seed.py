@@ -28,7 +28,8 @@ from opsassist.db.models import Base, Department, Server, User
 from opsassist.db.session import create_engine, create_session_factory
 from opsassist.logging_setup import configure_logging, get_logger
 
-PERMISSION_PATTERN = re.compile(r"^[a-z_]+:[a-z_]+$")
+# scope[:target], e.g. docs:hr, server:read, kb:write:engineering
+PERMISSION_PATTERN = re.compile(r"^[a-z_]+:[a-z_]+(:[a-z_]+)?$")
 
 
 class DepartmentFixture(BaseModel):

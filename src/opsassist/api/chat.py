@@ -16,6 +16,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, select
 
+from opsassist.agent.service import (
+    answer_from_knowledge,
+    conversation_thread,
+    describe_tool_result,
+)
 from opsassist.api.common import (
     GATEWAY_STATUS,
     NOT_FOUND,
@@ -35,6 +40,7 @@ from opsassist.api.schemas import (
     MessageOut,
     ModelRef,
     RetrievalOut,
+    ToolOut,
 )
 from opsassist.auth import CurrentPrincipal, Principal
 from opsassist.config import Settings
@@ -46,7 +52,7 @@ from opsassist.conversations import (
     history_window,
     usage_totals,
 )
-from opsassist.db.models import Message
+from opsassist.db.models import Conversation, Message
 from opsassist.gateway.catalog import UnknownModelError
 from opsassist.gateway.gateway import (
     CallContext,
@@ -58,6 +64,7 @@ from opsassist.gateway.gateway import (
 )
 from opsassist.knowledge.retrieval import RetrievalResult, retrieve
 from opsassist.logging_setup import get_logger
+from opsassist.memory import update_summary
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, StreamDelta, Usage
 from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
@@ -212,10 +219,11 @@ async def _start(
     },
 )
 async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal) -> Any:
-    """Answer from approved knowledge the caller may read, with validated citations.
+    """One turn through the agent: small talk, knowledge, a tool, or a refusal.
 
-    Nothing relevant retrieved -> a fixed abstention, and no model is called.
-    Confidential material in the context -> only providers that keep data on-box (D-15).
+    The graph only chooses the route. Tools are authorized, validated and audited in the
+    policy layer; the knowledge path answers strictly from what the caller may read, with a
+    fixed abstention when nothing relevant is retrieved (no model call at all).
     """
     started = time.perf_counter()
     gateway: LLMGateway = request.app.state.gateway
@@ -224,6 +232,32 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         return begun
     prep, ctx = begun
     conv_id = prep.conversation_id
+    params = ChatParams(temperature=body.temperature, max_tokens=body.max_tokens)
+
+    decision = await _route(request, prep, principal, body)
+    if decision["route"] in ("small_talk", "refuse"):
+        text = str(decision["text"])
+        message_id = await _save_assistant(
+            request, conv_id, text, status="complete", model_id=None, usage=None, citations=[]
+        )
+        return _chat_response(conv_id, message_id, text, decision["route"], ctx.request_id, started)
+
+    if decision["route"] == "tool":
+        tool = ToolOut.model_validate(decision["tool"])
+        message_id = await _save_assistant(
+            request,
+            conv_id,
+            tool.message,
+            status="complete",
+            model_id=None,
+            usage=None,
+            citations=[],
+        )
+        return _chat_response(
+            conv_id, message_id, tool.message, "tool", ctx.request_id, started, tool=tool
+        )
+
+    # ---------------------------------------------------------------- knowledge path
     try:
         retrieval = await _retrieve(request, principal, prep.question, ctx)
     except GatewayError as err:
@@ -236,79 +270,157 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
             err.attempts,
         )
 
-    if not retrieval.chunks:
-        answer = abstention()
-        message_id = await _save_assistant(
-            request,
-            conv_id,
-            answer.text,
-            status="complete",
-            model_id=None,
-            usage=None,
-            citations=[],
-        )
-        return ChatResponse(
-            conversation_id=conv_id,
-            message_id=message_id,
-            content=answer.text,
-            citations=[],
-            grounded=True,
-            abstained=True,
-            model=None,
-            route=None,
-            fallback_used=False,
-            finish_reason=None,
-            usage=usage_out(Usage(), Decimal(0)),
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
-            retrieval=_retrieval_out(retrieval),
-            attempts=[],
-            request_id=ctx.request_id,
-        )
-
-    messages = build_messages(prep.question, retrieval.chunks, prep.history)
-    params = ChatParams(temperature=body.temperature, max_tokens=body.max_tokens)
-    try:
-        outcome = await gateway.chat(
-            prep.model_choice,
-            messages,
-            params,
-            ctx,
-            allow_egress=not retrieval.has_confidential,
-        )
-    except GatewayError as err:
+    result = await answer_from_knowledge(
+        prep.question,
+        prep.history,
+        retrieval,
+        gateway=gateway,
+        ctx=ctx,
+        model_choice=prep.model_choice,
+        params=params,
+    )
+    if result.error is not None:
         await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
+        failure = result.error
         return error_response(
-            GATEWAY_STATUS[err.code], err.code, str(err), ctx.request_id, err.attempts
+            GATEWAY_STATUS[failure.code],
+            failure.code,
+            str(failure),
+            ctx.request_id,
+            failure.attempts,
         )
 
-    answer = finalize(outcome.result.content, retrieval.chunks)
-    usage = outcome.result.usage
+    answer = result.answer
     message_id = await _save_assistant(
         request,
         conv_id,
         answer.text,
         status="complete",
-        model_id=outcome.model.id,
-        usage=usage,
+        model_id=result.model_id,
+        usage=result.usage if result.model_id else None,
         citations=_citations_json(answer),
     )
+    await _maybe_summarize(request, prep, principal, ctx)
     return ChatResponse(
         conversation_id=conv_id,
         message_id=message_id,
         content=answer.text,
+        route="knowledge",
+        tool=None,
         citations=_citations_out(answer),
         grounded=answer.grounded,
         abstained=answer.abstained,
-        model=ModelRef(id=outcome.model.id, provider=outcome.model.provider),
-        route=outcome.route,
-        fallback_used=outcome.fallback_used,
-        finish_reason=outcome.result.finish_reason,
-        usage=usage_out(usage, outcome.cost_usd),
+        model=ModelRef(id=result.model_id, provider=result.provider or "")
+        if result.model_id
+        else None,
+        model_route=result.route,
+        fallback_used=result.fallback_used,
+        finish_reason=result.finish_reason,
+        usage=usage_out(result.usage, result.cost_usd),
         latency_ms=round((time.perf_counter() - started) * 1000, 2),
         retrieval=_retrieval_out(retrieval),
-        attempts=[AttemptOut.of(a) for a in outcome.attempts],
+        attempts=[AttemptOut.of(a) for a in result.attempts],
         request_id=ctx.request_id,
     )
+
+
+def _chat_response(
+    conv_id: uuid.UUID,
+    message_id: uuid.UUID,
+    text: str,
+    route: str,
+    request_id: str,
+    started: float,
+    tool: ToolOut | None = None,
+) -> ChatResponse:
+    """Response for the paths that produce no citations and no grounded answer."""
+    return ChatResponse(
+        conversation_id=conv_id,
+        message_id=message_id,
+        content=text,
+        route=route,
+        tool=tool,
+        citations=[],
+        grounded=True,
+        abstained=False,
+        model=None,
+        model_route=None,
+        fallback_used=False,
+        finish_reason=None,
+        usage=usage_out(Usage(), Decimal(0)),
+        latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        retrieval=RetrievalOut(
+            candidates=0, used=0, below_threshold=0, latency_ms=0.0, embedding_model="-"
+        ),
+        attempts=[],
+        request_id=request_id,
+    )
+
+
+async def _route(
+    request: Request, prep: Prepared, principal: Principal, body: ChatRequest
+) -> dict[str, Any]:
+    """Ask the agent graph which path this turn takes (and run the tool if that is it)."""
+    agent = request.app.state.agent
+    if agent is None:  # graph unavailable: behave like the day-3 knowledge-only assistant
+        return {"route": "knowledge"}
+    state = {
+        "question": prep.question,
+        "user_id": principal.user_id,
+        "request_id": request_id_of(request),
+        "conversation_id": str(prep.conversation_id),
+        "model_choice": prep.model_choice,
+    }
+    config = {"configurable": {"thread_id": conversation_thread(prep.conversation_id)}}
+    output = await agent.ainvoke(state, config=config)
+    interrupts = output.get("__interrupt__")
+    if interrupts:  # a sensitive action is waiting for an approver
+        payload = interrupts[0].value
+        return {
+            "route": "tool",
+            "tool": {
+                "name": payload.get("tool", "create_vpn_profile"),
+                "status": "pending",
+                "message": payload["summary"],
+                "data": None,
+                "pending_action_id": payload["pending_action_id"],
+                "action_hash": payload["action_hash"],
+            },
+        }
+    result = output.get("result") or {}
+    kind = result.get("kind", "knowledge")
+    if kind in ("small_talk", "refuse"):
+        return {"route": kind, "text": result["text"]}
+    if kind == "tool":
+        data = result.get("data")
+        message = (
+            describe_tool_result(result["tool"], data)
+            if result.get("status") == "ok" and data
+            else result.get("message", "")
+        )
+        return {
+            "route": "tool",
+            "tool": {
+                "name": result.get("tool", ""),
+                "status": result.get("status", "error"),
+                "message": message,
+                "data": data,
+                "pending_action_id": result.get("pending_action_id"),
+                "action_hash": result.get("action_hash"),
+            },
+        }
+    return {"route": "knowledge"}
+
+
+async def _maybe_summarize(
+    request: Request, prep: Prepared, principal: Principal, ctx: CallContext
+) -> None:
+    """Fold older turns into the conversation summary once the window overflows."""
+    gateway: LLMGateway = request.app.state.gateway
+    async with request.app.state.session_factory() as session, session.begin():
+        conv = await session.get(Conversation, prep.conversation_id)
+        if conv is not None:
+            await update_summary(session, conv, gateway, ctx, prep.model_choice)
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:

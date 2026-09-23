@@ -5,7 +5,7 @@ Fictional seed data from the assignment brief (sections 6-8). No real people, sy
 | File | Loaded by | Notes |
 |---|---|---|
 | `departments.json` | `make seed` | Department slugs are the isolation unit. `company` holds company-wide public documents. |
-| `users.json` | `make seed` | U001-U006 verbatim from the brief; department names mapped to slugs (`IT Operations` -> `it_ops`). |
+| `users.json` | `make seed` | U001-U006 verbatim from the brief; department names mapped to slugs (`IT Operations` -> `it_ops`). **Candidate-added:** `kb:write:<department>` for the three managers (U002, U004, U005) so document upload has an owner; nobody may publish public documents. |
 | `servers.json` | `make seed` | Server inventory verbatim; `-` for offline CPU/memory stored as `null`. |
 | `knowledge/*.md` | ingestion worker | Documents 1-5 verbatim, metadata as front matter. `KB-TEST-999` is the deliberate prompt-injection document and **must** be indexed. |
 | `knowledge/KB-PUB-001.md` | ingestion worker | *Candidate-added.* Public service-desk and ticket-severity guide: exercises company-wide access. |

@@ -11,6 +11,7 @@ x-app-env: &app-env
   OPSASSIST_REDIS_URL: redis://redis:6379/0
   OPSASSIST_JWT_SECRET: ${OPSASSIST_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}
   OPSASSIST_INDEX_EMBEDDING_MODEL: ${OPSASSIST_INDEX_EMBEDDING_MODEL:-ollama/nomic-embed-text}
+  OPSASSIST_ROUTER_MODEL: ${OPSASSIST_ROUTER_MODEL:-ollama/llama3.2-3b}
   # Provider keys are read from the caller's environment or .env; never written here.
   NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -46,7 +47,7 @@ services:
   migrate:
     build: .
     environment: *app-env
-    command: ["sh", "-c", "alembic upgrade head && python -m opsassist.seed"]
+    command: ["sh", "-c", "alembic upgrade head && python -m opsassist.agent.checkpointer && python -m opsassist.seed"]
     depends_on:
       postgres: {condition: service_healthy}
     restart: "no"
@@ -56,6 +57,9 @@ services:
     environment: *app-env
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
     extra_hosts: ["host.docker.internal:host-gateway"]  # reach Ollama on the host (Linux too)
+    # Uploaded documents are written by the API and read by the worker, so they live on a
+    # shared volume. In production this is object storage (S3/MinIO), not a local mount.
+    volumes: [uploads:/app/sample_data/knowledge/uploads]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
@@ -67,6 +71,7 @@ services:
     environment: *app-env
     command: ["dramatiq", "opsassist.worker", "--processes", "1", "--threads", "2"]
     extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: [uploads:/app/sample_data/knowledge/uploads]
     # The image's HTTP health check is for the API; the worker's liveness is its broker link.
     healthcheck:
       test: ["CMD", "python", "-c", "import os, redis; redis.Redis.from_url(os.environ['OPSASSIST_REDIS_URL']).ping()"]
@@ -81,3 +86,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  uploads:

@@ -320,19 +320,103 @@ decision → consequences.
   content with a citation. There are no tools in this mode, so nothing could be executed;
   D4 adds tools behind an authorization layer the model cannot bypass.
 
+### D-26 Agent orchestration on LangGraph
+- **Implemented as planned.** The VPN flow is "propose → wait for a different person's
+  approval → resume → execute exactly once", which maps onto LangGraph's `interrupt()` plus a
+  Postgres checkpointer (durable, resumable across restarts).
+- Outside the graph, in plain tested code: authorization, typed tool schemas, the
+  pending-action store with action hashes, idempotency, and the hash-chained audit log. The
+  graph decides *what to do next*; it never decides *whether it is allowed*.
+- Routes: `small_talk` (deterministic, no model call), `knowledge`, `tool`, `refuse`. Before
+  routing, "hi" was answered with "I couldn't find this in the approved knowledge" because
+  every message went to retrieval. Small talk still cannot state anything about company
+  knowledge - its reply is a fixed capability sentence.
+- The router's output is **validated before it can act**: unknown tool names, malformed JSON
+  or prose all fall back to the knowledge path, which cannot act.
+- A conversation is one durable thread, so a paused approval survives a restart and resumes
+  with the approver's decision - that is how the requester's conversation gains the final
+  answer.
+- **Cost:** one extra dependency and one extra model call per turn (visible in `llm_usage`).
+  A hand-written state machine would have avoided both.
+
+### D-28 The router runs on its own fast model (measured)
+- **Finding:** when the router used the user's answer model, NIM `gpt-oss-20b` timed out
+  twice at 60 s on the classification prompt; the gateway fell back and every turn silently
+  became knowledge-only. The symptom looked like bad classification; it was latency.
+- **Decision:** `OPSASSIST_ROUTER_MODEL` (default `ollama/llama3.2-3b`) routes independently
+  of the answer model. Routing is small, frequent and cheap; a slow hosted model must not
+  gate every turn. CI uses the deterministic mock, whose rule-based router keeps the agent
+  paths under test without a real model.
+
+### D-29 Tool contracts and what the model may influence
+- Four tools, each a narrow function over typed fields: `search_internal_docs`,
+  `get_server_status`, `create_support_ticket` and the sensitive `create_vpn_profile`.
+  **No deploy tool, no generic execute/SQL/URL tool** (E11), so "deploy now and skip
+  approval" cannot be honoured by any path.
+- The model may propose a tool name and arguments. Everything after that is code: schema
+  validation with `extra="forbid"`, a permission check against the database, and an audit
+  record for allow *and* deny.
+- Names resolve server-side (`employee_name` → employee id), so the model never invents an
+  identifier; an ambiguous name returns an error asking for the id.
+- `create_support_ticket` is idempotent for 10 minutes on (user, title, severity, details).
+- Tool results are rendered from the returned data, never summarized by a model, so the
+  assistant cannot describe a success that did not happen.
+
+### D-30 Server status: field-level policy
+- `server:read` shows identity, environment, status and last check for **every** server;
+  **CPU and memory only to the owning department and IT Operations**, because another team's
+  utilisation is their capacity information. Non-owners see an explicit "hidden" marker
+  rather than a silent omission.
+- U003 (HR, no `server:read`) is denied outright, as E07 expects.
+
+### D-31 Sensitive actions: propose, confirm, execute once
+- A sensitive tool never executes on the requester's turn. It becomes a **pending action**
+  with a stable id and an **action hash** over the exact validated arguments plus requester.
+- Approval requires the approve permission, a **different person**, an unexpired action, and
+  the **matching hash** in the request body, so an approver can only confirm what was
+  proposed.
+- Execution is guarded by the pending row's status under a row lock: a second approval
+  reports "already executed" instead of creating a second profile.
+- The requester's permission is re-checked at execution: losing `vpn:create` while waiting
+  rejects the action.
+
+### D-32 Tamper-evident audit
+- Every decision (allow, deny, pending, executed, error) is appended with
+  `hash = sha256(prev_hash || canonical(record))`, written **in the same transaction as the
+  action**, so a tool result cannot exist without its audit record.
+- The runtime role may INSERT and SELECT on `audit_log` but **not UPDATE or DELETE**; an edit
+  made as the owner is detected by `/api/audit/verify`, which reports the first broken id.
+  Both are covered by integration tests.
+- Arguments and results are redacted before storage; users read only their own records.
+
+### D-27 Upload: an authorized user becomes a content source
+- Uploading is a *write* into the knowledge base, gated by `kb:write:<department>` (held by
+  the three managers in the sample data, candidate-added).
+- **Metadata inside the file is untrusted.** The department comes from the permission; a file
+  claiming another department is rejected rather than silently corrected. Classification
+  defaults to the strictest the uploader may write; `confidential` needs
+  `<department>:confidential`; `public` needs a publish permission nobody holds.
+- Size and type limits, sanitized names, no execution, and a **credential scan** that rejects
+  key-shaped strings.
+- Poisoning by a legitimate owner cannot be prevented, so it is made visible: provenance
+  (`uploaded_by`) is stored and audited, versions roll back, documents can be deleted.
+  Requiring approval before a document joins the index is the next step if that risk
+  outweighs convenience.
+- Uploads live on a **shared volume** (object storage in production) because the API writes
+  them and the worker reads them - found by an integration test, where the first version
+  wrote into the API container and the worker failed with "file not found".
+
+### D-40 Memory: allowlist, not model judgement
+- **Persistent memory** stores only five preference keys (language, timezone, team,
+  response_style, default_server), each short and scanned for credentials. A model cannot
+  decide that a salary figure is worth remembering. Everything is listed and deletable
+  through `/api/memory`.
+- **Conversation memory** is the recent turns within a token budget plus a rolling summary of
+  older ones. The summary prompt treats the transcript as data and is best-effort: if the
+  model is unavailable the previous summary stands and the conversation still works.
+
 ### Pending decisions (filled on the day they are made)
-- D-26 **Agent orchestration on LangGraph** _(day 4, decided in principle)_. The VPN flow is
-  "propose → wait for a different person's approval → resume → execute exactly once", which
-  maps directly onto LangGraph's `interrupt()` + a Postgres checkpointer (durable, resumable
-  across restarts). Boundaries that stay **outside** the graph, in plain tested code:
-  authorization (policy engine), typed tool schemas, the pending-action store with action
-  hashes, idempotency, and the hash-chained audit log. The graph decides *what to do next*;
-  it never decides *whether it is allowed*. Alternative kept in mind: a hand-written state
-  machine (fewer dependencies, full control) - to be compared in the decision record.
-- D-30 server-status field-level policy (does ownership change access?) _(day 4)_
-- D-31 pending-action approval model and action hashing _(day 4)_
-- D-32 tamper-aware audit design _(day 4)_
-- D-40 memory: what may be persisted, token budget _(day 4)_
+- D-50 evaluation design: rubric, judge model, control baselines _(day 5)_
 
 ## 4. Security model
 _TBD (day 4)._ Threat model, trust boundaries, and how each critical finding is prevented.

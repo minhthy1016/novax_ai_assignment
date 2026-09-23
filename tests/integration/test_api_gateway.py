@@ -48,8 +48,9 @@ def test_chat_returns_answer_usage_and_persists_conversation(
     conv = api.get(f"/api/conversations/{body['conversation_id']}", headers=u001).json()
     assert [m["role"] for m in conv["messages"]] == ["user", "assistant"]
     assert conv["messages"][1]["content"] == body["content"]
-    # One query embedding for retrieval + one chat completion, both accounted for.
-    assert (conv["usage"]["chat_calls"], conv["usage"]["embedding_calls"]) == (1, 1)
+    # Every model call is accounted for: since D4 a turn costs one routing call plus the
+    # answer, and retrieval costs one query embedding.
+    assert (conv["usage"]["chat_calls"], conv["usage"]["embedding_calls"]) == (2, 1)
 
     follow_up = api.post(
         "/api/chat",

@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # Admit only hits within this similarity margin of the best hit (drops the weak tail).
     retrieval_relative_margin: float = Field(default=0.10, ge=0.0, le=1.0)
 
+    # Routing is a small, frequent classification: it runs on a fast local model by default,
+    # independent of the model the user picked for answers (a slow hosted model would make
+    # every turn wait, and on timeout the assistant would silently degrade to knowledge-only).
+    router_model: str | None = "ollama/llama3.2-3b"
+
     # Conversation window sent to the model (Task 4 refines this with summaries).
     history_max_messages: int = Field(default=20, ge=0, le=200)
     history_token_budget: int = Field(default=3000, ge=0, le=100_000)

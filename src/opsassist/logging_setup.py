@@ -16,6 +16,7 @@ from itertools import pairwise
 from typing import Any
 
 import structlog
+from structlog.tracebacks import ExceptionDictTransformer
 
 # Matched against whole words of a key (split on "_" / "-"), not substrings: "access_token"
 # and "jwt_secret" are redacted, but usage counters like "prompt_tokens" are not.
@@ -60,7 +61,9 @@ def configure_logging(level: str = "INFO", service: str = "opsassist-api") -> No
     structlog.configure(
         processors=[
             *shared,
-            structlog.processors.dict_tracebacks,
+            # Structured tracebacks WITHOUT local variables: locals carry request bodies,
+            # settings objects and tool arguments, which must not land in logs.
+            structlog.processors.ExceptionRenderer(ExceptionDictTransformer(show_locals=False)),
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.getLevelName(level)),

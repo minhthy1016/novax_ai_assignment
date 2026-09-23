@@ -23,6 +23,8 @@ jobs:
       OPSASSIST_REDIS_URL: redis://localhost:6379/0
       # No Ollama in CI: index with the deterministic 768-d mock embedder.
       OPSASSIST_INDEX_EMBEDDING_MODEL: mock/embed-768
+      # No Ollama in CI: the deterministic mock stands in for the router model too.
+      OPSASSIST_ROUTER_MODEL: mock/echo
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
@@ -31,7 +33,7 @@ jobs:
       - run: uv run ruff format --check src tests migrations evaluation scripts
       - run: uv run mypy src
       - run: uv run pytest -m "not integration"
-      - run: uv run alembic upgrade head && uv run python -m opsassist.seed
+      - run: uv run alembic upgrade head && uv run python -m opsassist.agent.checkpointer && uv run python -m opsassist.seed
       - run: uv run python -m opsassist.knowledge.ingest --inline
       - name: API + worker smoke and integration tests
         # Start the API and worker from the venv directly (not `uv run`) and always stop them:

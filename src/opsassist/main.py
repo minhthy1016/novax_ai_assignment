@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from redis.asyncio import Redis
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from opsassist import __version__
+from opsassist.agent.checkpointer import psycopg_url
+from opsassist.agent.graph import AgentDeps, build_graph
+from opsassist.api import actions, audit, chat, documents, health, knowledge, memory, models
 from opsassist.api import auth as auth_api
-from opsassist.api import chat, health, knowledge, models
 from opsassist.api.common import request_id_of
 from opsassist.config import Settings, get_settings
 from opsassist.db.session import create_engine, create_session_factory
@@ -37,16 +40,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             socket_connect_timeout=settings.dependency_check_timeout_s,
         )
         gateway, provider_statuses = build_gateway(settings, session_factory)
+        # The agent's durable state (paused approvals) lives in Postgres; the tables are
+        # created by the migrate step, which runs as the schema owner.
+        stack = AsyncExitStack()
+        checkpointer = None
+        try:
+            checkpointer = await stack.enter_async_context(
+                AsyncPostgresSaver.from_conn_string(
+                    psycopg_url(settings.database_url.get_secret_value())
+                )
+            )
+        except Exception:
+            log.warning("checkpointer_unavailable", note="agent runs without durable threads")
+        agent = build_graph(AgentDeps(session_factory, gateway, settings), checkpointer)
         app.state.settings = settings
         app.state.engine = engine
         app.state.session_factory = session_factory
         app.state.redis = redis
         app.state.gateway = gateway
         app.state.provider_statuses = provider_statuses
+        app.state.agent = agent
         log.info("startup", env=settings.env, version=__version__)
         try:
             yield
         finally:
+            await stack.aclose()
             await close_providers(gateway)
             await redis.aclose()
             await engine.dispose()
@@ -65,6 +83,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(models.router)
     app.include_router(knowledge.router)
+    app.include_router(actions.router)
+    app.include_router(audit.router)
+    app.include_router(memory.router)
+    app.include_router(documents.router)
     if settings.env in ("dev", "test"):
         app.include_router(auth_api.router)
 
@@ -84,6 +106,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "request_id": request_id_of(request),
                 },
                 "details": details,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        """Last resort: an unexpected failure still answers in the standard envelope with a
+        request ID, and the detail stays in the logs rather than going to the client."""
+        request_id = request_id_of(request)
+        log.exception("unhandled_error", request_id=request_id, error_type=type(exc).__name__)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal_error",
+                    "message": "the request could not be completed",
+                    "request_id": request_id,
+                }
             },
         )
 
