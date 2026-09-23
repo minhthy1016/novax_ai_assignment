@@ -75,7 +75,7 @@ alternatives and the measurement behind each choice are written down.
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |
 | T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input; **per-caller token buckets in Redis** with a tighter budget for model-backed routes (D-61) | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input`, `tests/unit/test_ratelimit.py` (6), `test_expensive_routes_are_rate_limited_per_caller` (real Redis: 429 + `Retry-After`, per-caller isolation, probes unaffected) | ✅ |
 | T6.6 | Tamper-aware audit + redaction | hash-chained `audit_log`, append-only for the runtime role, redacted arguments/results (D-32); tracebacks no longer log local variables | `test_audit_records_decisions_and_detects_tampering`, `test_runtime_role_cannot_rewrite_the_audit_log`, `test_audit_redacts_secret_like_values` | ✅ |
-| T6.7 | Tests: indirect injection, cross-department leakage | 94 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
+| T6.7 | Tests: indirect injection, cross-department leakage | 97 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
 
 ## Task 7 - Deployment
 | ID | Requirement | Implementation | Evidence | Status |

@@ -31,6 +31,7 @@ make up                     # builds, migrates, seeds, waits until healthy
 make ingest                 # queue sample knowledge for the worker to index
 make jobs                   # ingestion status (succeeded / unchanged / failed / dead)
 curl -s localhost:8000/readyz
+make ui                     # open the console at http://localhost:8000/ui
 ```
 
 Expected:
@@ -185,7 +186,7 @@ Each principle is implemented by specific decisions, recorded with their alterna
 ## Security and data boundaries
 
 The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
-Run them all with `make test-security` (94 tests).
+Run them all with `make test-security` (97 tests).
 
 **Identity.** A bearer token names the user *and their role*; both are re-checked against the
 database on every request, so a role change or a deactivated account is refused immediately.
@@ -395,6 +396,27 @@ U004 gets `["KB-HR-002"]`; NIM and Claude are `skipped:egress_not_permitted` and
 `ollama/llama3.2-3b` answers.
 
 
+## Console (trying it by hand)
+
+`http://localhost:8000/ui` — a single static page for driving the whole pipeline without
+`curl`. It is a **client**, like Flowise or `curl`: it holds no policy and no credentials,
+and it is mounted only in dev/test, together with the development token issuer it signs in
+with. Everything it appears to demonstrate is enforced by the API.
+
+| Tab | What it shows |
+|---|---|
+| **Ask** | The answer with its citations (click one to see the quoted passage), the route the agent took, the model used, fallback attempts, tokens, cost, latency and the retrieval counters behind that answer |
+| **Retrieval inspector** | `POST /api/search` for the signed-in caller: rank, vector similarity, full-text rank, fused score, and *the matched passage next to the whole section the model receives* — the parent-child split, visible |
+| **Documents** | Upload a file and watch the worker index it; the server decides department and classification, not the file |
+| **Approvals** | Pending sensitive actions, with **Approve**, **Reject** and a deliberate *approve with a wrong hash* button to watch the check refuse it |
+| **Audit** | The hash-chained trail for this caller, and `verify` for the whole chain |
+| **Memory** | What the assistant remembers, and deleting it |
+| **Models** | The catalog: availability, circuit state, **whether a model leaves our boundary**, and price per million tokens |
+
+The fastest way to see isolation: ask *"Show the HR compensation review notes."* as **U001**
+(Engineering) and then as **U004** (HR Manager) — same question, different answer, and the
+Retrieval inspector shows U001 was never given the passage in the first place.
+
 ## Model providers
 
 | Provider | Models | Needs |
@@ -529,7 +551,7 @@ make install            # local venv via uv
 make lint               # ruff + mypy (strict)
 make test               # unit tests (149), no services needed
 make test-integration   # integration tests (59) against the running stack
-make test-security      # security tests (94): authz, isolation, injection, audit, egress
+make test-security      # security tests (97): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```

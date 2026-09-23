@@ -41,6 +41,7 @@ engine before anything executes.
 | Worker | Dramatiq on Redis | Ingestion and re-indexing with retries and a dead-letter queue |
 | LLM providers | NVIDIA NIM (OpenAI-compatible), Claude (official Anthropic SDK), Ollama (native API), deterministic mock | Behind `ChatProvider` / `EmbeddingProvider` protocols |
 | Observability | structlog JSON, Prometheus, Opik (optional profile) | Logs, metrics, LLM traces and eval experiments |
+| Console | `web/index.html` served at `/ui` (dev/test) | Client only: renders what the API returns, holds no policy or credentials (D-62) |
 | Demo UI | Flowise (optional profile) | Thin client of `/api/chat` only — holds no policy or credentials |
 
 
@@ -131,6 +132,7 @@ reasoning stays available.
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
 | [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
 | [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, fail open | Operations |
+| [D-62](docs/decisions/D-62-console-ui-is-a-client.md) | The console is a client, dev/test only | Scope |
 
 ### Confirmed with the team lead (2026-09-23)
 | Question | Answer | Effect on the build |

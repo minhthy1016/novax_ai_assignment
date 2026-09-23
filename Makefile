@@ -22,6 +22,9 @@ migrate: ## Apply migrations from the host
 seed: ## Load fixtures from the host
 	uv run python -m opsassist.seed
 
+ui: ## Open the console (dev/test only)
+	uv run python -c "import webbrowser; webbrowser.open('http://localhost:8000/ui')"
+
 ingest: ## Queue all sample knowledge for the worker to (re)index
 	$(COMPOSE) exec api python -m opsassist.knowledge.ingest
 
@@ -59,4 +62,4 @@ test-all: ## Everything (needs `make up` + `make ingest`)
 logs: ## Tail API logs
 	$(COMPOSE) logs -f api
 
-.PHONY: help install up down reset migrate seed ingest ingest-inline jobs lint fmt test test-integration test-security test-eval test-all logs
+.PHONY: help install up down reset migrate seed ui ingest ingest-inline jobs lint fmt test test-integration test-security test-eval test-all logs
