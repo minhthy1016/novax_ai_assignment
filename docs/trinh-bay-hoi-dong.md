@@ -136,33 +136,54 @@ make ui                                     # mở console: http://localhost:800
 | D2 | Task 1 — LLM Gateway, nhiều provider, fallback | ✅ PR #1 |
 | D3 | Task 2 — RAG có cách ly phòng ban + đánh giá chunking | ✅ PR #2–#5 |
 | D4 | Task 3+4 — Tool, phê duyệt 2 người, audit, bộ nhớ, upload, rate limit | ✅ PR #6 |
-| D5 | Task 5 — Bộ đánh giá 71 ca, LLM judge, PDF bố cục phức tạp; sửa đọc bảng PDF, trích dẫn, trả lời một phần, gán nguồn | 🟡 PR #7 → #8 → #9 chờ review; kết quả đã đóng băng |
+| D5 | Task 5 — Bộ đánh giá 71 ca, LLM judge, PDF bố cục phức tạp; sửa đọc bảng PDF, trích dẫn, trả lời một phần, gán nguồn | ✅ PR #7, #8, #9 đã merge; chạy lại sạch từ `main`, kết quả cuối đã chốt |
 | D6 | Đề xuất mở rộng trên AWS + chuẩn bị trình bày | 🟡 đề xuất đã viết (D-60) |
 
 ### Kiểm thử
 
 - **184 unit test + 63 integration test** đều pass; lint + mypy (strict) sạch.
 
-### Đánh giá 71 ca (trả lời bằng `llama3.2:3b`, chấm bằng `qwen2.5:7b`)
+### Đánh giá 71 ca — lần chạy cuối, sạch, tái lập được
+
+Chạy từ `main` (`7c4236f`) ở trạng thái sạch: xoá database, build lại image, nạp lại 11 tài liệu mẫu, rồi chạy đủ 71 ca (trả lời bằng `llama3.2:3b`, chấm bằng `qwen2.5:7b`). Cùng commit đó: lint sạch, 184 unit test và 63 integration test đều pass.
+
+```text
+71-case evaluation — clean reproducible run
+
+Strict correctness:        63/71 (88.7%)
+Manual review:              66/71 (93.0%)
+
+Isolation:                  10/10
+Tool accuracy:              30/30
+Abstention:                 12/12
+Citation validity:          36/36
+Exact citation support:     35/35
+```
 
 | Tiêu chí | Kết quả |
 |---|---|
 | **Cách ly phòng ban** | **10/10** — không rò rỉ tài liệu nào |
 | **Độ chính xác tool** (chọn đúng tool, tham số, phân quyền) | **30/30** |
 | **Từ chối đúng lúc** (không có nguồn / không có quyền) | **12/12** |
-| Trích dẫn hợp lệ (trỏ đúng nguồn đã truy xuất) | 38/38 |
+| Trích dẫn hợp lệ (trỏ đúng nguồn đã truy xuất) | 36/36 |
+| Trích dẫn thật sự hỗ trợ câu văn (LLM judge chấm từng trích dẫn) | **35/35** |
 | Trích dẫn đúng tài liệu mong đợi (câu trả lời không có trích dẫn tính là sai) | 36/37 |
-| Trích dẫn thật sự hỗ trợ câu văn (LLM judge chấm từng trích dẫn) | 32/38 = 0.84 |
 | Dữ kiện tham chiếu được nêu đúng | 34/39 = 0.87 |
-| Trả lời đúng hoàn toàn | **64/71** (chấm tay: **67/71**) |
+| Trả lời đúng hoàn toàn | **63/71 = 88,7%** (chấm tay: **66/71 = 93,0%**) |
+| Backend tự sửa trích dẫn sai nguồn | 3 câu trả lời, 4 nguồn — cả 4 đều được judge xác nhận đúng |
 | Truy xuất: Hit@1 · MRR (41 câu vàng, tìm kiếm lai) | 0.927 · 0.963 |
-| Độ trễ p50 / p95 (mô hình 3B chạy trên laptop, dao động theo tải máy) | 1.0–3.2 s / 2.3–5.0 s |
+| Độ trễ p50 / p95 (mô hình 3B chạy trên laptop) | 1,1 s / 4,5 s |
 
 **So với mô hình không có RAG** (cùng mô hình, không truy xuất, không phân quyền): chỉ đúng **16%** dữ kiện (so với **87%** qua hệ thống), không có trích dẫn, và trả lời **5/5** câu mà người hỏi không có quyền hỏi.
 
 **Điểm quan trọng:** mọi tiêu chí *an toàn* (cách ly, phân quyền, phê duyệt) đạt 100% và được chấm **bằng luật, không dùng mô hình**. LLM judge chỉ chấm chất lượng câu văn.
 
-**Vì sao "chấm tay" cao hơn?** Điểm 64/71 do code đánh giá tự tính, không chỉnh tay ca nào. Đọc từng ca trong 7 ca trượt: **4 lỗi thật** (K08, M02, M01, M04), **2 lỗi của judge** (M03, M05: câu trả lời đúng nhưng judge chấm sai), **1 bộ lọc bắt nhầm** (E10: câu phủ định đúng "không xác nhận có trừ tiền trùng" chứa đúng cụm từ bị cấm). Mọi ca trượt đều in nguyên câu trả lời để người đọc tự kiểm tra.
+**Vì sao "chấm tay" cao hơn?** Điểm 63/71 do code đánh giá tự tính, không chỉnh tay ca nào. Đọc từng ca trong 8 ca trượt:
+- **5 lỗi thật:** E12 (tóm tắt đúng nhưng không có trích dẫn), K08 (thêm câu "không được nêu" mâu thuẫn với câu trả lời đúng), M02 (nói "nguồn không đề cập thứ Sáu" thay vì đính chính lịch deploy là thứ Ba/thứ Năm), M01 và M04 (từ chối an toàn thay vì đính chính tiền đề sai).
+- **2 lỗi của judge:** M03, M05 — câu trả lời đúng nhưng judge chấm sai.
+- **1 bộ lọc bắt nhầm:** E09 — câu từ chối đúng có chứa cụm "system prompt" nằm trong danh sách cấm.
+
+Mọi ca trượt đều in nguyên câu trả lời để người đọc tự kiểm tra.
 
 ### Bốn lỗi đã sửa hôm nay (ví dụ về cách làm việc)
 
@@ -190,8 +211,8 @@ make ui                                     # mở console: http://localhost:800
 
 - **Gán nguồn chỉ được kiểm tra với câu có con số:** câu không có số vẫn có thể bị gán nhầm nguồn (vẫn là nguồn người dùng được phép xem — không rò rỉ).
 - **Câu "nguồn không đề cập…" thừa:** thường vô hại, nhưng ở K08 nó sai (nói nguồn không đề cập điều mà câu trước vừa trả lời).
-- **Câu trả lời có thể thiếu trích dẫn (M02):** console gắn nhãn **uncited** và bộ đánh giá tính là trượt, nhưng hệ thống chưa chặn.
-- **Tiền đề sai:** đôi khi từ chối thay vì đính chính ("sự cố kéo dài 3 giờ…" → nên trả lời "thực tế là 18 phút").
+- **Câu trả lời có thể thiếu trích dẫn (E12):** console gắn nhãn **uncited** và bộ đánh giá tính là trượt, nhưng hệ thống chưa chặn.
+- **Tiền đề sai (M01, M02, M04):** đôi khi từ chối hoặc chỉ nói "không đề cập" thay vì đính chính ("sự cố kéo dài 3 giờ…" → nên trả lời "thực tế là 18 phút").
 - **Mô hình 3B là mức sàn:** các con số trên là cận dưới; gateway có thể chuyển sang mô hình lớn hơn mà không đổi code.
 - **SSO thật chưa có:** dùng bộ phát token dev thay cho IdP công ty.
 - **AWS mới thiết kế, chưa triển khai;** số liệu mở rộng suy ra từ đo đạc thực tế, chưa load test.

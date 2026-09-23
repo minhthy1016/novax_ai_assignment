@@ -558,7 +558,7 @@ names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
 
 | File | What is in it | Used by |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **70 evaluation cases** — the answering suite. One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **71 evaluation cases** — the answering suite. One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) | **41 retrieval gold cases** — question plus the exact source text that answers it (`evidence`, or `evidence_terms` for facts in table cells) | `make test-eval`, `chunking_eval.py` |
 | [`evaluation/answer_eval.py`](evaluation/answer_eval.py) | the six must-abstain questions used by the fast lexical scorer | `make test-eval` |
 
@@ -571,19 +571,39 @@ model involved. Only prose is judged by a model, and the judge is a **different 
 (Qwen judging Llama), called **outside** the pipeline, and **local**, so judging a
 confidential answer never sends it off the machine.
 
+The final D5 result is one clean, reproducible run: `main` at `7c4236f`, stack reset,
+image rebuilt, the sample documents re-indexed, then the full suite
+(`evaluation/runs/eval-20260923-1625.json`). The strict score is the harness's output with
+nothing adjusted; the manual score differs only by the three cases shown below as a judge
+error or a guard false positive.
+
+```text
+71-case evaluation — clean reproducible run
+
+Strict correctness:        63/71 (88.7%)
+Manual review:              66/71 (93.0%)
+
+Isolation:                  10/10
+Tool accuracy:              30/30
+Abstention:                 12/12
+Citation validity:          36/36
+Exact citation support:     35/35
+```
+
 | Axis | Result (95% CI) |
 |---|---|
-| Cases fully correct | 64/71 = 0.901 (0.81–0.95) — 67/71 read by hand |
+| Cases fully correct | 63/71 = 0.887 (0.79–0.94) — 66/71 read by hand |
 | Tool accuracy — choice, arguments, allowed/denied/pending | 30/30 = 1.000 (0.89–1.00) |
 | Abstention and refusal | 12/12 = 1.000 (0.76–1.00) |
 | Department isolation held | 10/10 = 1.000 (0.72–1.00) |
-| Citations valid (every cited source was retrieved) | 38/38 = 1.000 (0.91–1.00) |
+| Citations valid (every cited source was retrieved) | 36/36 = 1.000 (0.90–1.00) |
 | Expected source cited (an uncited answer counts as a miss) | 36/37 = 0.973 (0.86–1.00) |
-| **Citation supports the exact claim** (judged, per citation) | 32/38 = 0.842 (0.70–0.93) |
-| Retrieval: expected source in top-4 · MRR | 37/39 = 0.949 · 0.936 |
-| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a correct negated answer containing the guarded phrase |
+| **Citation supports the exact claim** (judged, per citation) | 35/35 = 1.000 (0.90–1.00) |
+| Citations re-pointed by the backend (answers · sources) | 3 · 4 — each corrected citation judged as supporting |
+| Retrieval: expected source in top-4 · MRR | 37/39 = 0.949 · 0.923 |
+| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a correct refusal containing the guarded phrase |
 | Judge: reference facts supported | 34/39 = 0.872 (0.73–0.94) |
-| End-to-end p50 / p95 · mean tokens per case | 3.22s / 4.95s · 492 — local 3B model on a laptop; earlier runs 0.97s / 2.28s, so latency here is machine load, not a stable figure |
+| End-to-end p50 / p95 · mean tokens per case | 1.09s / 4.51s · 489 — local 3B model on a laptop |
 
 ### What the brief asks for, and what measures it
 
@@ -597,14 +617,15 @@ confidential answer never sends it off the machine.
 | Performance | end-to-end latency and model/provider timing | p50 / p95 end-to-end, mean provider time per case from the attempt records |
 | Efficiency | token or usage count and estimated cost | prompt/completion tokens and estimated cost, per case and per category |
 
-**The seven failures, read by hand: four real, two judge errors, one guard false
+**The eight failures, read by hand: five real, two judge errors, one guard false
 positive.** The layout-heavy PDF was added to find table-reading errors, and it did: `L04`
 answered 30 minutes for a SEV1, the row *above* the right one. The parser now writes every
 table row with its own labels (D-20) and L04 passes. `L03` answered correctly but credited the
 wrong source. The backend now moves a citation to the retrieved section that actually states
-the figure (D-20), and L03 passes. The real failures left are `K08`, where an added "the
-source does not cover…" contradicts the answer before it; `M02`, a correct premise
-correction that came back without a citation; and two abstentions on false premises.
+the figure (D-20), and L03 passes. The real failures left are `E12`, a correct summary with
+no citation; `K08`, where an added "not specified" contradicts the answer; `M02`, which says
+what the source does not mention instead of correcting the premise; and two abstentions on
+false premises.
 Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
 
 **The control.** The same model with no retrieval and no policy states 16% of the reference
@@ -696,13 +717,9 @@ Honest list of what this build does **not** do, or does only partly. Each one is
 checkable in the code.
 
 **What the evaluation found (71 cases, read by hand in `evaluation/reports/analysis.md`)**
-- **Wide tables are read by the wrong row.** Asked how fast Tier 2 on-call must acknowledge
-  a SEV1, the answer gave the value from the row above (30 minutes instead of 10). Retrieval
-  was right; the answer step matched the first row label it saw.
-- **The assistant abstains instead of correcting a false premise.** "Since the incident
-  lasted three hours…" gets "I couldn't find this" rather than "it was 18 minutes". Safe,
-  but a colleague would correct you.
-- **One answerable question was abstained on** (API-tier patching, from a PDF).
+- **The assistant abstains or hedges instead of correcting a false premise** (M01, M02,
+  M04). "Since the incident lasted three hours…" gets "I couldn't find this" rather than "it
+  was 18 minutes". Safe, but a colleague would correct you.
 - **Partial answers cost some precision.** Two-part questions where the documents cover one
   part now get that part, cited, plus a note on what is not covered (K18). A 3B model
   sometimes adds that note to questions it answered in full, and once (K08) the note is
@@ -710,11 +727,11 @@ checkable in the code.
 - **Attribution is corrected only for claims with figures.** A claim without numbers can
   still be credited to the wrong one of the caller's sources; the per-citation judge measures
   it, nothing corrects it at runtime.
-- **An answer can arrive uncited** when the model writes no marker at all (M02). The console
+- **An answer can arrive uncited** when the model writes no marker at all (E12). The console
   marks it and the eval counts it as a miss; nothing blocks it.
-- **The judge is not the final word**: it twice marked a correct answer as contradicted
-  because the answer opened with "No, …". Every failing case prints its answer so a reader
-  can overrule the judge; scored by hand the run is 66/70 rather than 64/70.
+- **The judge is not the final word**: in the final run it marked two correct answers as
+  contradicted (M03, M05). Every failing case prints its answer so a reader can overrule the
+  judge; scored by hand the final run is 66/71 rather than 63/71.
 - The answering model in these runs is a 3B local model - a floor, not a target.
 - The scale proposal exists ([D-60](docs/decisions/D-60-scale-proposal-aws.md)) but its
   capacity numbers are derived from single-request measurements, not from a load test.
