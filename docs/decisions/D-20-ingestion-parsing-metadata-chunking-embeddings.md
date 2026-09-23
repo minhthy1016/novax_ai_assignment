@@ -81,3 +81,15 @@
   ¶13–14` (doc, version, section, paragraphs; PDFs add pages). The citation snippet is the
   *matched* passage, so the exact supporting text is shown even though the locator names the
   whole section.
+- **Citation attribution is checked where it can be checked without a model.** A 3B model
+  credited "queue depth above 5,000" to the incident notes, although the only retrieved
+  source containing 5,000 was the rate card (eval case L03, 5 of 6 repeats). After the answer
+  is generated, each sentence's figures ("5,000", "1%", "three") are compared with the
+  sections its markers point at. A figure that is in no cited section but is in another
+  retrieved one moves the citation there: cited sources that contain none of the sentence's
+  figures are replaced, and the others are kept. It is deterministic, costs no model call,
+  and never cites anything the caller was not given. The response reports
+  `repointed_citations`, so the correction shows up in the API response and the eval report.
+  It only covers claims that contain a figure. A claim with no numbers ("rollbacks need no
+  approval") is still judged by the per-citation eval check, not corrected at runtime. It does
+  not fix a claim that is wrong in itself; it only fixes where the claim points.

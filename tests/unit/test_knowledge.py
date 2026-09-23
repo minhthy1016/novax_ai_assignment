@@ -261,6 +261,48 @@ def test_prose_source_references_become_citations() -> None:
     assert answer.invalid_citations == 0
 
 
+RATE_CARD = "payment-worker: Funded RPS = 400; Scale trigger = queue depth above 5,000."
+INCIDENT = "Payment confirmation was delayed for 18 minutes; 7.4% of checkouts were affected."
+RUNBOOK = "Roll back if the checkout error rate exceeds 1% for three consecutive minutes."
+
+
+def test_citation_is_repointed_to_the_source_that_states_the_figure() -> None:
+    # Eval case L03, verbatim: the only source containing "5,000" is [1]; the model
+    # credited the incident notes [2][3]. [4] stays: it does contain "1%" and "three".
+    chunks = [chunk(1, RATE_CARD), chunk(2, INCIDENT), chunk(3, INCIDENT), chunk(4, RUNBOOK)]
+    answer = finalize(
+        "According to source [2], source [3], and source [4], the payment-worker is scaled "
+        "when the queue depth is above 5,000 [2], and when the checkout error rate exceeds 1% "
+        "for three consecutive minutes [4].",
+        chunks,
+    )
+    assert [c.number for c in answer.citations] == [1, 4]
+    assert "5,000 [1]" in answer.text and "[2]" not in answer.text and "[3]" not in answer.text
+    assert answer.repointed_citations == 2  # sources [2] and [3] replaced
+    # Replacing two references by the same source does not leave "source [1] and [1]".
+    answer = finalize("According to source [2] and [3], the depth is above 5,000 [2].", chunks)
+    assert answer.text == "According to source [1], the depth is above 5,000 [1]."
+
+
+def test_correct_or_unverifiable_citations_are_left_alone() -> None:
+    chunks = [chunk(1, RATE_CARD), chunk(2, INCIDENT), chunk(3, RUNBOOK)]
+    for text in (
+        "Confirmation was delayed for 18 minutes [2].",  # right source
+        "The pool limit was not updated after scaling [2].",  # no figure to check
+        "Scaling is above 5,000 [1] and rollback at 1% [3].",  # two claims, two right sources
+        "The limit is 250 requests [2].",  # figure in no source: not an attribution fix
+        "Queue depth above 5,000 triggers scaling.",  # uncited: nothing to re-point
+    ):
+        answer = finalize(text, chunks)
+        assert answer.text == text and answer.repointed_citations == 0, text
+
+
+def test_a_missing_source_is_added_when_the_cited_one_supports_part_of_the_sentence() -> None:
+    chunks = [chunk(1, RATE_CARD), chunk(2, INCIDENT)]
+    answer = finalize("It was delayed 18 minutes while the queue passed 5,000 [2].", chunks)
+    assert answer.text.endswith("5,000 [2][1].") and answer.repointed_citations == 1
+
+
 def test_partial_answer_is_not_an_abstention() -> None:
     text = (
         "Annual leave is 14 days [1]. "

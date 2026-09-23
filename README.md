@@ -577,13 +577,13 @@ confidential answer never sends it off the machine.
 | Tool accuracy — choice, arguments, allowed/denied/pending | 30/30 = 1.000 (0.89–1.00) |
 | Abstention and refusal | 12/12 = 1.000 (0.76–1.00) |
 | Department isolation held | 10/10 = 1.000 (0.72–1.00) |
-| Citations valid (every cited source was retrieved) | 37/37 = 1.000 (0.91–1.00) |
+| Citations valid (every cited source was retrieved) | 38/38 = 1.000 (0.91–1.00) |
 | Expected source cited (an uncited answer counts as a miss) | 36/37 = 0.973 (0.86–1.00) |
-| **Citation supports the exact claim** (judged, per citation) | 33/39 = 0.846 (0.70–0.93) |
+| **Citation supports the exact claim** (judged, per citation) | 32/38 = 0.842 (0.70–0.93) |
 | Retrieval: expected source in top-4 · MRR | 37/39 = 0.949 · 0.936 |
-| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a refusal that names "system prompts" |
+| Hallucination guards (`must_not_contain`) | 28/29 = 0.966 (0.83–0.99) — the miss is a correct negated answer containing the guarded phrase |
 | Judge: reference facts supported | 34/39 = 0.872 (0.73–0.94) |
-| End-to-end p50 / p95 · mean tokens per case | 0.97s / 2.28s · 490 |
+| End-to-end p50 / p95 · mean tokens per case | 3.22s / 4.95s · 492 — local 3B model on a laptop; earlier runs 0.97s / 2.28s, so latency here is machine load, not a stable figure |
 
 ### What the brief asks for, and what measures it
 
@@ -598,12 +598,13 @@ confidential answer never sends it off the machine.
 | Efficiency | token or usage count and estimated cost | prompt/completion tokens and estimated cost, per case and per category |
 
 **The seven failures, read by hand: four real, two judge errors, one guard false
-positive.** The layout-heavy PDF was added to find table-reading errors, and it did: `L04`,
-asked how fast Tier 2 must acknowledge a **SEV1**, answered 30 minutes — the row *above* the
-right one. The parser now writes every table row with its own labels (`Tier 2 - platform
-(SEV1): Acknowledge within = 10 minutes; ...`, D-20) and L04 passes. The real failures left
-are `L03`, a correct fact credited to the wrong source; `M02`, which reports what the sources
-do not say instead of correcting a false premise; and two abstentions on false premises.
+positive.** The layout-heavy PDF was added to find table-reading errors, and it did: `L04`
+answered 30 minutes for a SEV1, the row *above* the right one. The parser now writes every
+table row with its own labels (D-20) and L04 passes. `L03` answered correctly but credited the
+wrong source. The backend now moves a citation to the retrieved section that actually states
+the figure (D-20), and L03 passes. The real failures left are `K08`, where an added "the
+source does not cover…" contradicts the answer before it; `M02`, a correct premise
+correction that came back without a citation; and two abstentions on false premises.
 Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
 
 **The control.** The same model with no retrieval and no policy states 16% of the reference
@@ -704,10 +705,13 @@ checkable in the code.
 - **One answerable question was abstained on** (API-tier patching, from a PDF).
 - **Partial answers cost some precision.** Two-part questions where the documents cover one
   part now get that part, cited, plus a note on what is not covered (K18). A 3B model
-  sometimes adds that note to questions it answered in full (K08, L04 in the latest run).
-- **A correct fact can be credited to the wrong source** (L03): every citation resolves to a
-  source the caller was given, but a 3B model sometimes picks a neighbour that shares the
-  vocabulary. The per-citation judge catches it; nothing at runtime does yet.
+  sometimes adds that note to questions it answered in full, and once (K08) the note is
+  false.
+- **Attribution is corrected only for claims with figures.** A claim without numbers can
+  still be credited to the wrong one of the caller's sources; the per-citation judge measures
+  it, nothing corrects it at runtime.
+- **An answer can arrive uncited** when the model writes no marker at all (M02). The console
+  marks it and the eval counts it as a miss; nothing blocks it.
 - **The judge is not the final word**: it twice marked a correct answer as contradicted
   because the answer opened with "No, …". Every failing case prints its answer so a reader
   can overrule the judge; scored by hand the run is 66/70 rather than 64/70.
