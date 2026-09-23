@@ -196,15 +196,17 @@ derived from what this repository actually measures:
 
 | Concern | Answer at scale |
 |---|---|
-| API scaling, async work, backpressure | Stateless ECS/EKS tasks across 3 AZs; state in Postgres so any task resumes any conversation. Bounded admission per model, `429` + `Retry-After` over the limit; shedding order: batch jobs → non-streaming → streaming, never tool calls or approvals |
-| Inference routing, GPU use, batching, fallback, overload | vLLM on GPU nodes in a private subnet with continuous batching (~3-4 L4-class GPUs for 100 concurrent streams at the measured 500 output tokens/answer), router and embeddings on their own node (D-28); managed APIs as fallback for public/internal only; the existing per-model circuit breaker is the overload mechanism (D-11) |
-| Embedding throughput, incremental indexing, sharding, lifecycle | ~45M children at 1M documents (measured 46 per sample document); initial index is a batch GPU job on spot, steady state re-embeds only changed content; `halfvec` + **chunk tables partitioned by department**, reader endpoints for retrieval; versioned atomic swap keeps re-indexing duplicate-free (D-23) |
-| Caching, invalidation, queues, retries, DLQ | Embedding / retrieval / answer caches whose key always contains the **access scope** and the corpus version - a key without the scope is a cross-department leak; no caching of confidential material. SQS + worker service replaces Redis/Dramatiq with the same retry and dead-letter semantics (D-24) |
-| Department isolation, ingestion → retrieval → citations → audit | Unchanged in shape: RLS under the runtime role, per-department partitions and KMS keys, citations carry the document version, audit chain exported to S3 Object Lock |
-| Availability, DR, observability, cost | 99.9% answering / 99.95% tool execution; Aurora multi-AZ, RPO ≈ 5 min, RTO ≈ 30 min; degradation ladder ending in retrieval-only answers and a read-only mode; per-department token budgets enforced from the usage rows the gateway already writes |
+| API scaling, async work, backpressure | Stateless ECS Fargate tasks across 3 AZs, scaled on in-flight requests; state in Postgres, so any task resumes any conversation. Per-caller token buckets exist today (D-61); a bounded admission queue per model with `429` + `Retry-After` is proposed. Long-running work goes through SQS workers |
+| Inference routing, GPU use, batching, fallback, overload | vLLM with continuous batching in a private subnet, one model per node group; **~10 L4 GPUs (4 x g6.12xlarge, N+1)** at the 100-request ceiling, decode-bound. Autoscale on queue depth and KV-cache use, not GPU %. Managed APIs are fallback for public/internal only; the per-model circuit breaker is the overload mechanism (D-11) |
+| Embedding throughput, incremental indexing, sharding, lifecycle | **~47M chunks** at 1M documents (measured 18.7 per 1,000 tokens × an assumed 2,500 tokens per document); initial index ~6.5 h per L4 on spot, then ~4 min/day incremental. `halfvec`, **chunk tables partitioned by department** (~8.4 GB HNSW each), reader endpoints for retrieval; versioned atomic swap (D-23) |
+| Caching, invalidation, queues, retries, DLQ | Embedding / retrieval / answer caches whose key always contains the **access scope** and the corpus version; no caching of confidential material. SQS keeps the retry and dead-letter semantics of D-24 |
+| Department isolation, ingestion → retrieval → citations → audit | Unchanged in shape: department from the uploader's permission, per-department partitions and KMS keys, RLS under the runtime role, confidential context never leaves the VPC, audit chain to S3 Object Lock |
+| Availability, DR, observability, cost | 99.9% answering / 99.95% tool execution; Aurora multi-AZ, RPO ≈ 5 min, RTO ≈ 30 min, index rebuildable from S3. OpenTelemetry traces and vLLM queue metrics added to today's metrics; abstention, uncited and re-pointed rates as quality signals. GPU floor of two nodes (average load is ~13x below the ceiling), per-department token budgets |
 
-The numbers are derived from single-request measurements in this repository, not from a load
-test. D-60 says which three measurements must replace them first.
+Every number comes from [`evaluation/capacity.py`](evaluation/capacity.py), with each input
+labelled measured or assumed; a unit test fails if D-60 quotes a number the model no longer
+produces. None of it is load-tested, and D-60 names the three measurements that must replace
+the assumptions first.
 
 ## 7. Known limitations and future work
 Maintained in the README: [known limitations](README.md#known-limitations) and
