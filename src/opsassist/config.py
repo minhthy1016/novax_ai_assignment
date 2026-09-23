@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     # The built-in allowlist stays: a model must not decide what is worth remembering.
     memory_extra_keys: str = ""
 
+    # Rate limiting (D-61). Two buckets: everything, and the routes that cost a model
+    # call or an ingestion job. Limits are per caller (token subject, else client address).
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = Field(default=300, ge=1, le=10_000)
+    rate_limit_burst: int = Field(default=100, ge=1, le=10_000)
+    rate_limit_expensive_per_minute: int = Field(default=60, ge=1, le=10_000)
+    rate_limit_expensive_burst: int = Field(default=30, ge=1, le=10_000)
+
     # Conversation window sent to the model (Task 4 refines this with summaries).
     history_max_messages: int = Field(default=20, ge=0, le=200)
     history_token_budget: int = Field(default=3000, ge=0, le=100_000)

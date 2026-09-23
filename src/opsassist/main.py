@@ -23,6 +23,7 @@ from opsassist.db.session import create_engine, create_session_factory
 from opsassist.gateway.factory import build_gateway, close_providers
 from opsassist.logging_setup import configure_logging, get_logger
 from opsassist.middleware import CorrelationMiddleware
+from opsassist.ratelimit import RateLimiter, RateLimitMiddleware
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -57,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.session_factory = session_factory
         app.state.redis = redis
+        app.state.rate_limiter = RateLimiter(redis, settings)
         app.state.gateway = gateway
         app.state.provider_statuses = provider_statuses
         app.state.agent = agent
@@ -78,6 +80,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs" if settings.env in ("dev", "test") else None,
         redoc_url=None,
     )
+    # Starlette runs middleware in reverse registration order: correlation first, so a
+    # throttled request still gets a request ID, a log line and an HTTP metric.
+    app.add_middleware(RateLimitMiddleware, settings=settings)
     app.add_middleware(CorrelationMiddleware)
     app.include_router(health.router)
     app.include_router(chat.router)

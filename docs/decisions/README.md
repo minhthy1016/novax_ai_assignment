@@ -36,3 +36,5 @@ Why the system is built this way. The system overview lives in
 | [D-31](D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
 | [D-40](D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
+| [D-60](D-60-scale-proposal-aws.md) | Scale proposal: 5,000 employees, 1M documents, 100 concurrent (AWS) | Scale |
+| [D-61](D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, two budgets, fail open | Operations |

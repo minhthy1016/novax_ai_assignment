@@ -13,14 +13,14 @@ Client (curl / chat UI / Flowise demo)
   │  bearer token
   ▼
 FastAPI ─ CorrelationMiddleware (request ID, JSON log line, HTTP metrics)
-  │       rate limit (Redis)                                           [day 4]
+  │       RateLimitMiddleware (per-caller token buckets in Redis, D-61)
   ▼
 AuthN → Principal{user, department, permissions}  (JWT; permissions loaded per request)
   ▼
-Orchestrator ─ decides: answer from knowledge | call a tool | refuse   [day 3-4]
+Orchestrator (LangGraph) ─ small talk | knowledge | tool | refuse
   ├─ Retrieval: AccessScope -> SQL filter + Postgres RLS -> hybrid rank -> gate -> top-K
-  ├─ Policy engine: authorizes each tool call against the principal     [day 4]
-  ├─ Tools: typed schemas, pending-action approval for sensitive ones   [day 4]
+  ├─ Policy engine: authorizes each tool call against the principal
+  ├─ Tools: typed schemas, pending-action approval for sensitive ones
   └─ Provider gateway: routing, retry, timeout, fallback, usage
   ▼
 Response with citations ─ audit record (hash-chained) ─ metrics ─ trace (Opik, optional)
@@ -129,6 +129,8 @@ reasoning stays available.
 | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](docs/decisions/D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
+| [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
+| [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) | Rate limiting: per-caller token buckets, fail open | Operations |
 
 ### Confirmed with the team lead (2026-09-23)
 | Question | Answer | Effect on the build |
@@ -139,13 +141,8 @@ reasoning stays available.
 | Should RAG enforce permissions at retrieval time? | "suggest your idea" | Our answer: yes, and in two layers - the SQL filter *and* Postgres row-level security under a non-superuser role, with confidential material in a separate table (D-17, D-22). Filtering after retrieval would already have put the text in memory next to the model. |
 | Which cloud for the scale proposal? | AWS (used in production today) | The day-6 proposal targets AWS concretely (D-50 note below). |
 
-### Pending decisions (filled on the day they are made)
-- D-50 evaluation design: rubric, judge model, control baselines _(day 5)_
-- D-60 **scale proposal on AWS** _(day 6)_: ECS/EKS for the API and workers, Aurora
-  PostgreSQL with pgvector (or OpenSearch if the vector tier outgrows it), ElastiCache or
-  SQS for the queue, S3 for uploaded documents, Secrets Manager + KMS, OIDC through the
-  corporate IdP. Confidential traffic must stay inside the VPC, which points at self-hosted
-  inference (vLLM on GPU nodes) for that class rather than a managed model API.
+### Still open
+- D-50 evaluation design: rubric, judge model, control baselines _(day 5)_.
 
 ## 4. Security model (engineering view)
 
@@ -163,8 +160,9 @@ engineering level, each control is one of these, and each has its own record:
 | Two-person approval pinned by an action hash, executed once | `tools/executor.py` | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) |
 | Hash-chained, append-only audit written in the action's transaction | `policy/audit.py` | [D-32](docs/decisions/D-32-tamper-evident-audit.md) |
 | Upload confined to the uploader's department; metadata untrusted | `knowledge/upload.py` | [D-27](docs/decisions/D-27-upload-an-authorized-user-becomes-a-content-sour.md) |
+| Per-caller rate limits on model-backed routes (capacity and cost, not authorization) | `ratelimit.py` | [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) |
 
-Run them: `make test-security` (91 tests).
+Run them: `make test-security`.
 
 ## 5. Evaluation design
 Gold sets and scripts live in [`evaluation/`](evaluation/). Today: a 34-case retrieval gold
@@ -176,8 +174,23 @@ judge per claim, injection and isolation categories, cost and latency reporting,
 complex-PDF set that gives Docling's layout model a fair comparison.
 
 ## 6. Scale proposal
-_Day 6._ 5,000 employees · 1M documents · 100 concurrent requests · GPU cluster, targeting
-**AWS** (the production environment in use) - see D-60 above for the shape it will take.
+
+Target: 5,000 employees · 1M documents · 100 concurrent requests · GPU cluster, on **AWS**
+(the production environment the team confirmed). Full reasoning, with the capacity numbers
+derived from what this repository actually measures:
+[D-60](docs/decisions/D-60-scale-proposal-aws.md).
+
+| Concern | Answer at scale |
+|---|---|
+| API scaling, async work, backpressure | Stateless ECS/EKS tasks across 3 AZs; state in Postgres so any task resumes any conversation. Bounded admission per model, `429` + `Retry-After` over the limit; shedding order: batch jobs → non-streaming → streaming, never tool calls or approvals |
+| Inference routing, GPU use, batching, fallback, overload | vLLM on GPU nodes in a private subnet with continuous batching (~3-4 L4-class GPUs for 100 concurrent streams at the measured 500 output tokens/answer), router and embeddings on their own node (D-28); managed APIs as fallback for public/internal only; the existing per-model circuit breaker is the overload mechanism (D-11) |
+| Embedding throughput, incremental indexing, sharding, lifecycle | ~45M children at 1M documents (measured 46 per sample document); initial index is a batch GPU job on spot, steady state re-embeds only changed content; `halfvec` + **chunk tables partitioned by department**, reader endpoints for retrieval; versioned atomic swap keeps re-indexing duplicate-free (D-23) |
+| Caching, invalidation, queues, retries, DLQ | Embedding / retrieval / answer caches whose key always contains the **access scope** and the corpus version - a key without the scope is a cross-department leak; no caching of confidential material. SQS + worker service replaces Redis/Dramatiq with the same retry and dead-letter semantics (D-24) |
+| Department isolation, ingestion → retrieval → citations → audit | Unchanged in shape: RLS under the runtime role, per-department partitions and KMS keys, citations carry the document version, audit chain exported to S3 Object Lock |
+| Availability, DR, observability, cost | 99.9% answering / 99.95% tool execution; Aurora multi-AZ, RPO ≈ 5 min, RTO ≈ 30 min; degradation ladder ending in retrieval-only answers and a read-only mode; per-department token budgets enforced from the usage rows the gateway already writes |
+
+The numbers are derived from single-request measurements in this repository, not from a load
+test. D-60 says which three measurements must replace them first.
 
 ## 7. Known limitations and future work
 Maintained in the README: [known limitations](README.md#known-limitations) and

@@ -288,3 +288,38 @@ def test_upload_rejects_claimed_department_credentials_and_unauthorized_users(
 
     public = upload(api, "U004", "note.md", b"# Note\n\nAnything.\n", classification="public")
     assert public.status_code == 403 and "publish" in public.json()["error"]["message"]
+
+
+# ------------------------------------------------------------------ rate limiting
+
+
+@pytest.mark.security
+def test_expensive_routes_are_rate_limited_per_caller(api: httpx.Client) -> None:
+    """A burst on a model-backed route is refused with Retry-After, and the refusal is
+    scoped to that caller: another user is unaffected, and cheap routes keep working.
+
+    This test uses a plain client (no automatic waiting) so it can observe the 429 itself.
+    """
+    burst = int(os.environ.get("OPSASSIST_RATE_LIMIT_EXPENSIVE_BURST", "30"))
+    with httpx.Client(base_url=str(api.base_url), timeout=30) as raw:
+        headers = auth(api, "U006")
+        statuses = [
+            raw.post("/api/search", json={"query": "leave"}, headers=headers).status_code
+            for _ in range(burst + 5)
+        ]
+        assert statuses[0] == 200  # the first requests are served, not rejected outright
+        assert 429 in statuses, f"never throttled after {len(statuses)} requests"
+
+        refused = raw.post("/api/search", json={"query": "leave"}, headers=headers)
+        assert refused.status_code == 429
+        assert int(refused.headers["retry-after"]) >= 1
+        assert refused.json()["error"]["code"] == "rate_limited"
+        assert refused.headers["x-request-id"]  # a throttled request is still correlated
+
+        # Same person, cheaper bucket: still allowed.
+        assert raw.get("/api/models", headers=headers).status_code == 200
+        # Different person, own budget.
+        other = raw.post("/api/search", json={"query": "leave"}, headers=auth(api, "U003"))
+        assert other.status_code == 200
+        # Probes are never throttled.
+        assert raw.get("/healthz").status_code == 200

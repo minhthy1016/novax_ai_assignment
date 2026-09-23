@@ -185,7 +185,7 @@ Each principle is implemented by specific decisions, recorded with their alterna
 ## Security and data boundaries
 
 The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
-Run them all with `make test-security` (91 tests).
+Run them all with `make test-security` (94 tests).
 
 **Identity.** A bearer token names the user *and their role*; both are re-checked against the
 database on every request, so a role change or a deactivated account is refused immediately.
@@ -215,6 +215,12 @@ validated against what was actually retrieved; tool results are rendered from re
 a success that did not happen cannot be described. An instruction inside a document — or
 pasted by a user — cannot execute anything, because tools are authorized outside the model.
 
+**Abuse and cost.** Every caller has two token buckets in Redis — a tighter one for the
+routes that cost a model call or an ingestion job — keyed by the *verified* token subject,
+so editing the header does not buy a fresh budget. Over the limit the answer is `429` with
+`Retry-After`. This protects capacity and money, not authorization: it fails **open** if
+Redis is down, because nothing about who may read what depends on it.
+
 **Evidence.** Every decision (allow, deny, pending, executed, error) is appended to a
 hash-chained audit log in the same transaction as the action. The runtime role may insert
 and read it but not update or delete it, and `GET /api/audit/verify` detects any edit.
@@ -233,9 +239,11 @@ Arguments, results and logs are redacted; provider keys live only in environment
 | Provider fallback, streaming, usage accounting | ✅ |
 | Document upload by authorized users | ✅ |
 | Persistent memory (inspect and delete) | ✅ |
+| Per-caller rate limiting on model-backed routes | ✅ |
 | Evaluation benchmark | 🟡 34-case gold set + answer scoring; the 30+ case suite with an LLM judge is day 5 |
 | Production SSO / OIDC | 🟡 dev token issuer stands in |
-| AWS deployment and scale-out | 🟡 proposal is day 6 |
+| Scale proposal (5k employees, 1M documents, GPU cluster) | ✅ [D-60](docs/decisions/D-60-scale-proposal-aws.md), derived from measured numbers - not load-tested |
+| AWS deployment itself | 🟡 designed, not built: the repository deploys with Docker Compose |
 
 
 ## Demo walkthrough (the six required items)
@@ -521,7 +529,7 @@ make install            # local venv via uv
 make lint               # ruff + mypy (strict)
 make test               # unit tests (149), no services needed
 make test-integration   # integration tests (59) against the running stack
-make test-security      # security tests (91): authz, isolation, injection, audit, egress
+make test-security      # security tests (94): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```
@@ -563,22 +571,34 @@ use the owner. `docker compose exec postgres psql -U opsassist -d opsassist` ope
 
 ## Repository layout
 
-```
-src/opsassist/     application code
-  api/             HTTP routes and contracts
-  gateway/         model catalog, routing, retry/fallback, usage
-  providers/       one adapter per model vendor
-  knowledge/       parsing, chunking, ingestion, retrieval
-  policy/          access scope
-migrations/        Alembic migrations (one per feature, in build order)
-sample_data/       fictional seed data from the brief (+ candidate-added documents)
-tests/             unit/ (no services) and integration/ (compose stack)
-evaluation/        gold sets, evaluation scripts, reports
-scripts/           sample PDF generator
-docs/              traceability matrix
-architecture.md    decisions with alternatives, security model, scale proposal
-```
+The structure the brief asks for, with what each part holds. Everything marked ✦ is a
+deliverable named in the assignment.
 
+```
+README.md            ✦ this overview: setup, architecture, decisions, security, limits
+architecture.md      ✦ engineering view: request path, module map, security table, scale
+docker-compose.yml   ✦ the whole stack: api, worker, postgres+pgvector, redis (+ profiles)
+.env.example         ✦ every setting with safe defaults; no real credentials
+src/opsassist/       ✦ application code
+  api/                 HTTP routes and contracts (chat, stream, search, models, documents,
+                       conversations, memory, actions, audit, health, metrics)
+  agent/               LangGraph orchestration and the answering services
+  gateway/             model catalog, routing, retry/fallback, egress control, usage
+  providers/           one adapter per vendor: NIM, Anthropic, Ollama, deterministic mock
+  knowledge/           parsing, chunking, ingestion, retrieval, upload policy
+  policy/              access scope and the hash-chained audit log
+  tools/               typed tool registry and the executor that authorizes them
+tests/               ✦ unit/ (no services) · integration/ (compose stack) · `security` marker
+evaluation/          ✦ gold sets, evaluation scripts, reports, alternative chunkers
+sample_data/         ✦ fictional seed data from the brief, plus candidate-added documents
+docs/                ✦ decisions/ (ADRs) · traceability.md (requirement → code → test) · brief/
+migrations/            Alembic migrations, one per feature, in build order
+config/                model catalog (`models.toml`) - which models exist and their limits
+scripts/               helper scripts (sample PDF generation)
+Makefile               every command in this README
+Dockerfile             one image, used by both the API and the worker
+.github/workflows/     CI: lint, type check, unit tests, integration stack
+```
 
 ## Known limitations
 
@@ -589,8 +609,9 @@ checkable in the code.
 - The evaluation suite is a 34-case retrieval gold set plus scripted live checks; the
   30+ case suite with an LLM judge, abstention/injection categories and cost/latency
   reporting is day 5.
-- The scale proposal (5,000 employees, 1M documents, GPU cluster) is day 6; it will target
-  AWS, which is the production environment in use.
+- The scale proposal exists ([D-60](docs/decisions/D-60-scale-proposal-aws.md)) but its
+  capacity numbers are derived from single-request measurements, not from a load test.
+  D-60 names the three measurements that must replace them first.
 
 **Identity and operations**
 - `POST /api/auth/dev-token` stands in for the company IdP and exists only in dev/test.
@@ -598,6 +619,8 @@ checkable in the code.
   come from the database.
 - One database role serves both API and worker. A read-only role for the API is future work.
 - Circuit-breaker state is per API instance, not shared across replicas.
+- Rate-limit buckets are shared across replicas (Redis) but fail **open** when Redis is
+  unreachable: a capacity control, never an authorization one.
 - Pending approvals expire after 24 hours, with no reminder or escalation path.
 - Tool outcomes are in the audit log and structured logs, but there is no Prometheus counter
   for them yet.

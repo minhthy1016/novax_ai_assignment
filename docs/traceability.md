@@ -73,9 +73,9 @@ alternatives and the measurement behind each choice are written down.
 | T6.2 | Authentication + RBAC/ABAC | `auth.py`: role-bound JWT (user + role re-checked per request), permissions from DB only | `test_every_api_route_requires_a_token`, `test_token_is_rejected_after_role_change`, `test_token_is_rejected_after_deactivation` | 🟡 authN done; authZ policies day 4 |
 | T6.3 | Department isolation + least-privilege tools | documents (D-22, D-17); each tool needs its own permission, field-level policy for server data, upload confined to the uploader's department (D-27) | see T2.5; `test_e07_…`, `test_upload_is_confined_to_the_uploader_department` | ✅ |
 | T6.4 | Secrets management | `config.py` (`SecretStr`, prod guard) | `tests/unit/test_config.py` | 🟡 |
-| T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input` | 🟡 rate limiting day 4 |
+| T6.5 | Input validation, rate limiting, output controls | request-ID validation; bounded, `extra=forbid` request schemas; 422s never echo input; **per-caller token buckets in Redis** with a tighter budget for model-backed routes (D-61) | `test_unsafe_request_id_is_replaced`, `test_validation_errors_do_not_echo_input`, `tests/unit/test_ratelimit.py` (6), `test_expensive_routes_are_rate_limited_per_caller` (real Redis: 429 + `Retry-After`, per-caller isolation, probes unaffected) | ✅ |
 | T6.6 | Tamper-aware audit + redaction | hash-chained `audit_log`, append-only for the runtime role, redacted arguments/results (D-32); tracebacks no longer log local variables | `test_audit_records_decisions_and_detects_tampering`, `test_runtime_role_cannot_rewrite_the_audit_log`, `test_audit_redacts_secret_like_values` | ✅ |
-| T6.7 | Tests: indirect injection, cross-department leakage | 91 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
+| T6.7 | Tests: indirect injection, cross-department leakage | 94 tests tagged `security` (`make test-security`): authz, isolation, RLS, injection, approvals, audit integrity, egress, upload guards | `uv run pytest -m security` | ✅ |
 
 ## Task 7 - Deployment
 | ID | Requirement | Implementation | Evidence | Status |
@@ -86,7 +86,7 @@ alternatives and the measurement behind each choice are written down.
 | T7.4 | Metrics: requests, errors, latency, model calls, tool calls, retrieval timing | `metrics.py`: HTTP, model calls/latency/tokens, retrieval latency; tool outcomes in `audit_log` and structured logs | `test_metrics_use_route_templates` | 🟡 tool-call counter not yet wired to Prometheus |
 | T7.5 | Background worker, retryable tasks | `worker.py` (Dramatiq, retries, dead-letter queue, `ingestion_jobs`) | `test_worker_marks_permanent_failures_without_retrying`; compose `worker` service indexed all sample docs | ✅ |
 | T7.6 | Migrations, seed instructions, safe config defaults | `migrations/`, `seed.py`, `.env.example` | `test_seed_is_idempotent` | ✅ |
-| T7.7 | Scale proposal (5k users, 1M docs, 100 concurrent, GPU cluster) | | | ⬜ |
+| T7.7 | Scale proposal (5k users, 1M docs, 100 concurrent, GPU cluster) | [D-60](decisions/D-60-scale-proposal-aws.md): capacity derived from measured chunk/token counts; partitioned pgvector, vLLM sizing, backpressure, cache keys carrying the access scope, DR and cost controls | architecture.md §6 summary table; numbers traceable to `evaluation/` measurements, load test named as the next step | ✅ |
 
 ## Critical findings (must all be "No" with evidence)
 | Finding | Guard | Evidence | Status |

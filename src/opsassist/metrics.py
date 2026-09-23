@@ -37,6 +37,14 @@ TOOL_CALLS = Counter(
     "opsassist_tool_calls_total", "Tool invocations", ["tool", "decision", "outcome"]
 )
 
+RATE_LIMITED = Counter(
+    "opsassist_rate_limited_total", "Requests rejected by the rate limiter", ["bucket"]
+)
+RATE_LIMITER_UNAVAILABLE = Counter(
+    "opsassist_rate_limiter_unavailable_total",
+    "Rate-limit checks that could not reach Redis and were allowed through",
+)
+
 RETRIEVAL_LATENCY = Histogram(
     "opsassist_retrieval_duration_seconds",
     "Retrieval latency (embed + search + filter)",

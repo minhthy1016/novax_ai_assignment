@@ -30,6 +30,7 @@ from typing import Any
 import httpx
 
 from evaluation.chunking_eval import ROOT, _norm, wilson
+from evaluation.client import post
 from opsassist.providers.mock import _STOPWORDS
 
 # Questions whose answer is NOT in the caller's approved knowledge: the assistant must
@@ -73,14 +74,15 @@ def evaluate_answerable(
     if model:
         payload["model"] = model
     started = time.time()
-    body = api.post(
-        "/api/chat", json=payload, headers={"Authorization": f"Bearer {token}"}, timeout=300
+    body = post(
+        api, "/api/chat", json=payload, headers={"Authorization": f"Bearer {token}"}, timeout=300
     ).json()
     answer = _norm(body.get("content", "")).replace(" %", "%")
     cited = {c["doc_key"] for c in body.get("citations", [])}
     retrieved = {
         h["doc_key"]
-        for h in api.post(
+        for h in post(
+            api,
             "/api/search",
             json={"query": case["query"]},
             headers={"Authorization": f"Bearer {token}"},
@@ -123,7 +125,7 @@ def main() -> None:
 
         def token(user: str) -> str:
             if user not in tokens:
-                tokens[user] = api.post("/api/auth/dev-token", json={"user_id": user}).json()[
+                tokens[user] = post(api, "/api/auth/dev-token", json={"user_id": user}).json()[
                     "access_token"
                 ]
             return tokens[user]
@@ -144,8 +146,8 @@ def main() -> None:
             payload: dict[str, Any] = {"message": question, "max_tokens": 300}
             if args.model:
                 payload["model"] = args.model
-            body = api.post(
-                "/api/chat", json=payload, headers={"Authorization": f"Bearer {token(user)}"}
+            body = post(
+                api, "/api/chat", json=payload, headers={"Authorization": f"Bearer {token(user)}"}
             ).json()
             ok = bool(body.get("abstained")) and not body.get("citations")
             abstained_correctly += ok
