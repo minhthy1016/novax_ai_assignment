@@ -77,6 +77,12 @@
   `nemotron-3-embed-1b` (2048-d) was rejected for the index: data egress, and >2000 dims
   needs `halfvec`. The embedding model is recorded per chunk; changing it forces a re-index
   (D-12). CI uses a deterministic 768-d hashed mock with stopwords removed.
+- **Measured against nemotron afterwards** ([`embedding.md`](../../evaluation/reports/embedding.md),
+  40 gold cases, confidential documents excluded so nothing restricted was sent to NIM):
+  vector-only, nemotron ranks better (Hit@1 0.950 vs 0.825, overlapping intervals); hybrid,
+  which is what production runs, they are identical (0.925 Hit@1, 0.963 MRR). Nemotron's
+  costs stay: egress, ~0.6 s per query embedding, and vectors ~2.7x larger. Nomic stays;
+  revisit for paraphrase-heavy or multilingual questions, or with nemotron self-hosted.
 - **Citations:** the stable reference is `KB-ENG-003@v1#§Service playbooks › Payment API
   ¶13–14` (doc, version, section, paragraphs; PDFs add pages). The citation snippet is the
   *matched* passage, so the exact supporting text is shown even though the locator names the
