@@ -38,7 +38,7 @@ def test_expired_token_is_rejected() -> None:
 
 
 def test_token_signed_with_another_secret_is_rejected() -> None:
-    other = Settings(env="test", jwt_secret="another-secret-0123456789abcdef")
+    other = Settings(env="test", jwt_secret="another-secret-0123456789abcdef-0123")
     with pytest.raises(jwt.InvalidSignatureError):
         decode_token(SETTINGS, issue_token(other, "U001", "r"))
 

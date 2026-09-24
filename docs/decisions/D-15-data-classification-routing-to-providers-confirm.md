@@ -1,4 +1,4 @@
-# D-15: Data-classification routing to providers (confirmed with the team lead)
+# D-15: Data-classification routing to providers (confirmed)
 
 *Decision record. System overview: [`../../README.md`](../../README.md) · engineering architecture: [`../../architecture.md`](../../architecture.md) · index: [`README.md`](README.md).*
 
@@ -12,3 +12,4 @@
   question was answered by Ollama with NIM and Claude visibly skipped.
 - `internal` material may go to hosted providers today. Setting the variable to `public`
   keeps internal documents on-box as well - one environment variable, no code change.
+**Confirmed with the team lead.**
