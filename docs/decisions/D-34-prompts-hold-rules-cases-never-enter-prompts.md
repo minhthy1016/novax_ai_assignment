@@ -48,7 +48,10 @@ So raw scores are reported by regime and are **not** compared as better or worse
 | Regime | Router | Judge | Cases | Strict |
 |---|---|---|---|---|
 | D5 (frozen) | with examples | judge-v1 (`d8d53fb9ab0a`) | 71 | 63/71 |
-| This PR | rules + skills + identifier trigger (`07333a67b364`) | judge-v2 with code checks (`a12459f1df25`) | 73 | 64/73 |
+| This PR, first run | rules + skills + identifier trigger (`07333a67b364`) | judge-v2 with code checks (`a12459f1df25`) | 73 | 64/73 |
+| This PR, with the write-skill guard | + rule 5 and the guard below (`e11c82329f39`) | same judge-v2 (`a12459f1df25`) | 73 | **68/73** |
+
+The last two rows share the judge and the suite, so they **can** be compared.
 
 The attribution comes from two separate measurements.
 
@@ -106,20 +109,50 @@ tagged plain / partial / scope / negation / entailed / refusal).
 - **The fix belongs in the skill layer, not the prompt:** a write skill should require an
   explicit request for *that* record, stated in its card and checked in code. See below.
 
+### 3. The write-skill guard (T08), built and measured
+
+**Fix.** A skill that writes declares the words its record goes by (`names_record`: "ticket";
+"vpn", "openvpn"). If the router picks it for a message that never names that record, code
+sends the question to knowledge instead, so **nothing is created that nobody asked for**. The
+ticket skill card no longer offers "report a problem for follow-up", and prompt rule 5 states
+the principle. Optional arguments written as the text "null" are read as absent; the new
+prompt had made the 3B model emit `"employee_name": "null"`, which two integration tests caught.
+
+**Result, same judge and suite as the first run of this PR:**
+
+| | First run | With the guard |
+|---|---|---|
+| Cases fully correct | 64/73 | **68/73** |
+| Tool accuracy | 32/34 | **34/34** |
+| Correct abstention | 10/12 | 11/12 |
+| Isolation · phrase guards | 10/10 · 29/29 | 10/10 · 29/29 |
+
+**What moved:**
+- **T08 is fixed by the guard.** "Run a database migration…" now goes to knowledge and
+  abstains; no ticket is opened.
+- **E07 routed correctly this time.** The prompt changed (rule 5), so this may be the prompt
+  or run-to-run variation; one run cannot separate the two.
+- **K04 and X06 passed** on the 3B model's wording.
+- **Still failing:**
+  - E03: a refusal in the model's own words (PR #14);
+  - K08, M01, M04: real;
+  - M03: a judge error.
+
+Tool accuracy is back to 34/34 **with no worked example in any prompt**, and the hygiene test
+still passes. Report: [`write-guard-run.md`](../../evaluation/reports/write-guard-run.md).
+
 ## Next
 
-1. **Write skills need an explicit request (T08).** The skill card says so, and the executor
-   refuses a "creates a record" skill unless the message names that kind of record. Measure
-   on the suite; do not add an example.
-2. **Case memory (step B).** A reviewed example store, disjoint from the eval set, retrieved
+1. **Case memory (step B).** A reviewed example store, disjoint from the eval set, retrieved
    by similarity, with the hygiene test extended to it.
-3. **Measure a larger router model** on the same cases. D-28 put the router on a small model
+2. **Measure a larger router model** on the same cases. D-28 put the router on a small model
    for latency; that trade should now be re-measured.
 
 **Provenance, for every number above:**
 - prompts and suite at the commit of this record;
-- raw results `evaluation/runs/eval-20260924-1642.json` (this PR) and
-  `eval-20260923-1625.json` (D5);
-- reports [`rules-only-run.md`](../../evaluation/reports/rules-only-run.md) and
+- raw results `evaluation/runs/eval-20260924-1642.json` (this PR, first run),
+  `eval-20260924-1736.json` (with the write-skill guard) and `eval-20260923-1625.json` (D5);
+- reports [`rules-only-run.md`](../../evaluation/reports/rules-only-run.md),
+  [`write-guard-run.md`](../../evaluation/reports/write-guard-run.md) and
   [`judge-drift.md`](../../evaluation/reports/judge-drift.md);
 - hand labels [`judge_labels.jsonl`](../../evaluation/judge_labels.jsonl).

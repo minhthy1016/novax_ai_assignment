@@ -125,3 +125,29 @@ def test_an_employee_id_given_as_a_name_is_read_as_an_id() -> None:
     args = CreateVpnProfileArgs.model_validate({"employee_name": "u006"})
     assert (args.employee_id, args.employee_name) == ("U006", None)
     assert CreateVpnProfileArgs.model_validate({"employee_name": "John Tan"}).employee_name
+
+
+@pytest.mark.security
+def test_a_writing_skill_needs_a_request_for_its_record() -> None:
+    # T08: the router once opened a ticket for "run a database migration". A skill that
+    # writes is only used when the message asks for what it creates.
+    from opsassist.tools.registry import TOOLS, asks_for_record
+
+    assert not asks_for_record("create_support_ticket", "Run a database migration right now.")
+    assert asks_for_record("create_support_ticket", "Raise a ticket: the portal will not load.")
+    assert not asks_for_record("create_vpn_profile", "Give John Tan remote access now.")
+    assert asks_for_record("create_vpn_profile", "Create an OpenVPN profile for John Tan.")
+    # Reading skills are never held back, and every writing skill declares its record words.
+    assert asks_for_record("get_server_status", "Is anything down?")
+    for spec in TOOLS.values():
+        if spec.effect != "reads data":
+            assert spec.names_record, spec.name
+
+
+def test_an_optional_argument_written_as_null_text_is_absent() -> None:
+    from opsassist.tools.registry import CreateVpnProfileArgs
+
+    args = CreateVpnProfileArgs.model_validate(
+        {"employee_id": "U006", "employee_name": "null", "duration_days": "30"}
+    )
+    assert (args.employee_id, args.employee_name, args.duration_days) == ("U006", None, 30)

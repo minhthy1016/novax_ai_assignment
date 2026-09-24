@@ -22,8 +22,26 @@ Severity = Literal["critical", "high", "medium", "low"]
 MAX_VPN_DAYS = 30  # KB-IT-001: profiles are valid for at most 30 days
 
 
+_ABSENT = {"", "null", "none", "n/a"}
+
+
 class ToolArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never ignored
+
+    @model_validator(mode="before")
+    @classmethod
+    def _absent_means_none(cls, data: Any) -> Any:
+        """Small models write an empty optional argument as the text "null" or "". For a
+        field that may be absent, that text means absent - not a name called "null"."""
+        if not isinstance(data, dict):
+            return data
+        optional = {name for name, field in cls.model_fields.items() if not field.is_required()}
+        return {
+            key: None
+            if key in optional and isinstance(value, str) and value.strip().lower() in _ABSENT
+            else value
+            for key, value in data.items()
+        }
 
 
 class SearchInternalDocsArgs(ToolArgs):
@@ -97,6 +115,9 @@ class ToolSpec:
     # it, before any model is asked: (pattern, argument name). Never for a skill that writes
     # or needs approval - a trigger must not be a way around the router's refuse rule.
     trigger: tuple[str, str] | None = None
+    # A skill that writes may only be used when the request names its record: at least one
+    # of these words must be in the message. Enforced in code after routing (D-34, T08).
+    names_record: tuple[str, ...] = ()
     sensitive: bool = False
     approve_permission: str | None = None  # a *different* holder must confirm
 
@@ -138,10 +159,15 @@ TOOLS: dict[str, ToolSpec] = {
         args_model=CreateSupportTicketArgs,
         requires_permission="ticket:create",
         use_when=(
-            "The user asks to open, raise, create or log a ticket, or to report a problem "
-            "for follow-up. Severity is 'medium' unless the user states one.",
+            "The user explicitly asks to open, raise, create or log a ticket. Severity is "
+            "'medium' unless the user states one.",
         ),
-        not_when=("The user asks how the ticket process or severity levels work.",),
+        not_when=(
+            "The user asks how the ticket process or severity levels work.",
+            "The user asks for an operation no skill performs (a deployment, a migration, a "
+            "restart, a change to a system): never open a ticket on their behalf.",
+        ),
+        names_record=("ticket",),
     ),
     "get_support_ticket": ToolSpec(
         name="get_support_ticket",
@@ -173,10 +199,21 @@ TOOLS: dict[str, ToolSpec] = {
             "The user asks about VPN policy or how VPN access works: that is knowledge.",
             "The user asks to skip, avoid or not wait for the approval: that is refuse.",
         ),
+        names_record=("vpn", "openvpn"),
         sensitive=True,
         approve_permission="vpn:approve",
     ),
 }
+
+
+def asks_for_record(tool: str, message: str) -> bool:
+    """Whether the message asks for the record a writing skill creates. A skill that only
+    reads is never held back here; a writing skill needs one of its record words."""
+    spec = TOOLS.get(tool)
+    if spec is None or not spec.names_record:
+        return True
+    words = set(re.findall(r"[a-z]+", message.lower()))
+    return any(word in words for word in spec.names_record)
 
 
 def triggered_skill(message: str) -> tuple[str, dict[str, str]] | None:
