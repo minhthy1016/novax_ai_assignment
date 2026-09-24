@@ -197,7 +197,7 @@
         </tr>
         <tr data-topic="eval">
           <td class="q">Có "học tủ" prompt theo đúng bộ đánh giá của mình không?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">Có, và đã tự phát hiện ra. Ví dụ trong prompt router trùng 10 câu hỏi đánh giá, còn ví dụ của judge trùng đáp án của 3 ca. Đã gỡ bỏ, và giờ prompt chỉ còn quy tắc; tool đến router dưới dạng thẻ kỹ năng sinh từ code. Có test tự fail nếu prompt nào trùng câu chữ với câu hỏi hoặc đáp án đánh giá, hoặc nêu tên dữ liệu mẫu. Sau đó đo lại theo từng chế độ đo, không so chênh lệch điểm: trên cùng bộ câu trả lời, rubric judge mới chỉ đổi 1 kết luận. Router chỉ có quy tắc thì yếu hơn: một yêu cầu đã tạo ra ticket mà không ai yêu cầu. Điều đó được ghi lại, kèm cách sửa cần làm.</td>
+          <td class="answer" tabindex="0">Có, và đã tự phát hiện ra. Ví dụ trong prompt router trùng 10 câu hỏi đánh giá, còn ví dụ của judge trùng đáp án của 3 ca. Đã gỡ bỏ, và giờ prompt chỉ còn quy tắc; tool đến router dưới dạng thẻ kỹ năng sinh từ code. Có test tự fail nếu prompt nào trùng câu chữ với câu hỏi hoặc đáp án đánh giá, hoặc nêu tên dữ liệu mẫu. Sau đó đo lại theo từng chế độ đo, không so chênh lệch điểm: trên cùng bộ câu trả lời, rubric judge mới chỉ đổi 1 kết luận. Bỏ ví dụ thì lúc đầu router yếu hơn: một yêu cầu đã tạo ra ticket mà không ai yêu cầu. Giờ code chặn mọi skill ghi dữ liệu khi yêu cầu không nhắc tới đúng loại bản ghi đó, và chọn tool trở lại 34/34 mà prompt vẫn không có ví dụ.</td>
           <td class="evidence"><code>D-34</code>; <code>test_prompt_hygiene.py</code>; <code>rules-only-run.md</code> (PR #15)</td>
           <td class="avoid">"Prompt của mình rất chung chung." Hãy nói đã phát hiện gì và phải trả giá gì.</td>
         </tr>

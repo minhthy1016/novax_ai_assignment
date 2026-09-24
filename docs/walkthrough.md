@@ -33,7 +33,7 @@ Chạy `scripts/demo.sh`. Script dừng trước mỗi bước, bấm Enter đ�
 
 **Nếu còn thời gian, hoặc khi được hỏi về prompt (1 phút).** Mở bảng "Phát hiện: prompt bị học tủ" trong `docs/trinh-bay-hoi-dong.md` §4. Ba ý:
 1. Đã tự phát hiện ví dụ trong prompt trùng với bộ đánh giá (router 10 câu, judge 3 đáp án), và đã gỡ bỏ.
-2. Hệ thống **không** tốt lên: chọn tool 30/30 → 32/34, và một yêu cầu tạo ticket không ai yêu cầu. Đó là con số thật.
+2. Bỏ ví dụ thì lúc đầu chọn tool giảm 30/30 → 32/34, có một yêu cầu tạo ticket không ai yêu cầu. Chặn skill ghi bằng code đã đưa về **34/34** (68/73 tổng thể, cùng judge-v2), mà không cần ví dụ nào.
 3. **Bộ đo mạnh lên rõ:** có test chống học tủ, judge khớp nhãn tay 36/39, 3 bên chấm độc lập, mã hash prompt trong mọi báo cáo.
 
 **Mục 3, câu ví dụ của đề bài.** Chỉ dùng khi PR #15 đã merge: trên `main` hiện tại router vẫn từ chối nhầm câu này.

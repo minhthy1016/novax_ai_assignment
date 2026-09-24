@@ -650,24 +650,26 @@ cases. They were removed. Prompts now hold rules only, tools reach the router as
 generated from code, and the judge is three separate graders. The regimes differ, so this is
 read metric by metric rather than as a delta:
 
-| Brief's metric | D5 · judge-v1 · 71 cases · router with examples | After D-34 · judge-v2 · 73 cases · rules-only router | Reading |
-|---|---|---|---|
-| Answer correctness: cases fully correct | 63/71 (88.7%) | 64/73 (87.7%) | about the same |
-| · reference facts supported | 34/39 | 34/38 | about the same; false "contradicted" 4 → 1 is the **judge** improving, not the assistant |
-| Retrieval relevance: top-4 · MRR | 37/39 · 0.923 | 37/39 · 0.923 | identical (retrieval untouched) |
-| Citation correctness: valid | 100% | 100% | unchanged |
-| · expected source cited | 36/37 | 34/36 | slightly lower: K04 uncited this run (3B wording) |
-| · citation supports the exact claim | 35/35 | 31/35 | **not comparable**: judge-v2 is stricter on causality and scope |
-| Hallucination / abstention: phrase guards | 28/29 | 29/29 | about the same |
-| · correct abstention | 12/12 | **10/12** | lower: refusals in the model's own words (E03, X06), handled in PR #14 |
-| · unsupported claims found | 4 | 7 | **not comparable**: now checked on every answer; an upper bound |
-| Tool accuracy | 30/30 | **32/34** | **a real regression**: E07 misrouted, and T08 opened a ticket nobody asked for. The old 100% partly relied on examples that overlapped the test cases |
-| Isolation | 10/10 | 10/10 | unchanged |
-| Performance: p50 / p95 | 1.09 / 4.51 s | 1.25 / 4.39 s | about the same |
-| Efficiency: tokens per case · cost | 489 · $0 | 458 · $0 | about the same |
+| Brief's metric | D5 · judge-v1 · 71 cases · router with examples | After D-34 · judge-v2 · 73 cases · rules-only router | + write-skill guard · same judge and cases | Reading |
+|---|---|---|---|---|
+| Answer correctness: cases fully correct | 63/71 (88.7%) | 64/73 (87.7%) | 68/73 (93.2%) | about the same |
+| · reference facts supported | 34/39 | 34/38 | 34/38 | about the same; false "contradicted" 4 → 1 is the **judge** improving, not the assistant |
+| Retrieval relevance: top-4 · MRR | 37/39 · 0.923 | 37/39 · 0.923 | 37/39 · 0.923 | identical (retrieval untouched) |
+| Citation correctness: valid | 100% | 100% | 100% | unchanged |
+| · expected source cited | 36/37 | 34/36 | 36/37 | slightly lower: K04 uncited this run (3B wording) |
+| · citation supports the exact claim | 35/35 | 31/35 | 31/34 | **not comparable**: judge-v2 is stricter on causality and scope |
+| Hallucination / abstention: phrase guards | 28/29 | 29/29 | 29/29 | about the same |
+| · correct abstention | 12/12 | **10/12** | 11/12 | lower: refusals in the model's own words (E03, X06), handled in PR #14 |
+| · unsupported claims found | 4 | 7 | 9 | **not comparable**: now checked on every answer; an upper bound |
+| Tool accuracy | 30/30 | **32/34** | **34/34** | without examples the router first lost E07 and opened an unrequested ticket (T08); a write-skill guard in code restored 34/34 with no examples in the prompt |
+| Isolation | 10/10 | 10/10 | 10/10 | unchanged |
+| Performance: p50 / p95 | 1.09 / 4.51 s | 1.25 / 4.39 s | see report | about the same |
+| Efficiency: tokens per case · cost | 489 · $0 | 458 · $0 | see report | about the same |
 
-**The system did not get better, and in two places it got worse** (tool choice, abstention).
-Those are the honest numbers for a small router that no longer sees the test. **The harness
+**Removing the examples first cost tool choice and abstention**: the honest numbers for a
+small router that no longer sees the test. **A write-skill guard in code then restored tool
+accuracy to 34/34** (68/73 overall, comparable with the 64/73 run: same judge, same cases),
+still with no worked example in any prompt. **The harness
 got clearly stronger:**
 
 **What the harness gained - the part that clearly improved:**
@@ -787,8 +789,8 @@ checkable in the code.
 - **An answer can arrive uncited** when the model writes no marker at all (E12). The console
   marks it and the eval counts it as a miss; nothing blocks it.
 - **A small router without worked examples is weaker** (D-34): a bare "Check api-prod-02."
-  can go to knowledge, and one request opened a ticket nobody asked for (T08). Write skills
-  should require an explicit request for that record; this is recorded, not yet built.
+  can go to knowledge. Writing skills are held back in code when the request never names
+  their record (this is what stopped T08 from opening a ticket nobody asked for).
 - **The judge is not the final word**: in the final run it marked two correct answers as
   contradicted (M03, M05). Every failing case prints its answer so a reader can overrule the
   judge; scored by hand the final run is 66/71 rather than 63/71.
