@@ -1,6 +1,6 @@
 # OpsAssist — Trợ lý vận hành AI nội bộ
 
-*Tài liệu trình bày cho hội đồng · cập nhật tối 23/09/2026 (ngày 5/6) · review 29/09/2026*
+*Tài liệu trình bày cho hội đồng · cập nhật 23/09/2026 (ngày 5/6) · review 29/09/2026*
 
 ---
 
@@ -55,7 +55,7 @@ flowchart TB
 
 1. **Xác thực**: JWT gắn với user + role; quyền luôn đọc lại từ database.
 2. **Định tuyến**: một mô hình nhỏ chạy local phân loại câu hỏi → *chào hỏi / tra cứu kiến thức / gọi tool / từ chối*.
-3. **Tra cứu**: tìm kiếm lai (vector + full-text) **đã lọc theo phòng ban và mức mật** — lọc 2 lớp: câu SQL **và** Row-Level Security của Postgres.
+3. **Tra cứu**: tìm kiếm lai (vector + full-text) **đã lọc theo phòng ban và mức bảo mật** — lọc 2 lớp: câu SQL **và** Row-Level Security (RLS) của Postgres.
 4. **Sinh câu trả lời**: qua Gateway (có retry, fallback, circuit breaker). Tài liệu *confidential* chỉ được gửi tới mô hình chạy nội bộ, không ra ngoài.
 5. **Kiểm tra trích dẫn + ghi audit**: trích dẫn nào không trỏ tới nguồn đã truy xuất thì bị loại; mọi hành động ghi vào log nối chuỗi hash (không sửa/xoá được).
 
@@ -95,7 +95,7 @@ src/opsassist/
 
 migrations/        # 8 migration Alembic (gồm role DB không phải superuser, RLS)
 sample_data/       # 11 tài liệu mẫu (md, txt, pdf) + 6 nhân viên mẫu
-evaluation/        # bộ đánh giá 71 ca + LLM judge + so sánh chiến lược chunking
+evaluation/        # bộ đánh giá 70 ca + LLM judge + so sánh chiến lược chunking
 tests/             # unit + integration
 web/index.html     # console thử nghiệm (chỉ dùng dev)
 docs/              # quyết định kiến trúc (D-xx), bảng truy vết yêu cầu
@@ -121,7 +121,7 @@ make ui                                     # mở console: http://localhost:800
 | `make test` | Unit test, không cần dịch vụ |
 | `make test-integration` | Integration test trên stack đang chạy |
 | `make test-security` | Test bảo mật: phân quyền, cách ly, injection, audit, egress |
-| `make eval` | Bộ đánh giá 71 ca có LLM judge (cần `ollama pull qwen2.5:7b`) |
+| `make eval` | Bộ đánh giá 70 ca có LLM judge (cần `ollama pull qwen2.5:7b`) |
 | `make eval-control` | Như trên + đường cơ sở "không truy xuất" để so sánh |
 
 ---
@@ -136,62 +136,41 @@ make ui                                     # mở console: http://localhost:800
 | D2 | Task 1 — LLM Gateway, nhiều provider, fallback | ✅ PR #1 |
 | D3 | Task 2 — RAG có cách ly phòng ban + đánh giá chunking | ✅ PR #2–#5 |
 | D4 | Task 3+4 — Tool, phê duyệt 2 người, audit, bộ nhớ, upload, rate limit | ✅ PR #6 |
-| D5 | Task 5 — Bộ đánh giá 71 ca, LLM judge, PDF bố cục phức tạp; sửa đọc bảng PDF, trích dẫn, trả lời một phần, gán nguồn | 🟡 PR #7 → #8 → #9 chờ review; kết quả đã đóng băng |
+| D5 | Task 5 — Bộ đánh giá 70 ca, LLM judge, PDF bố cục phức tạp | 🟡 PR #7 chờ review; bản sửa đọc bảng PDF đang ở nhánh `d5b-table-rows` |
 | D6 | Đề xuất mở rộng trên AWS + chuẩn bị trình bày | 🟡 đề xuất đã viết (D-60) |
 
 ### Kiểm thử
 
-- **184 unit test + 63 integration test** đều pass; lint + mypy (strict) sạch.
+- **179 unit test + 63 integration test** đều pass; lint + mypy (strict) sạch; CI xanh.
 
-### Đánh giá 71 ca (trả lời bằng `llama3.2:3b`, chấm bằng `qwen2.5:7b`)
+### Đánh giá 70 ca (trả lời bằng `llama3.2:3b`, chấm bằng `qwen2.5:7b`)
 
 | Tiêu chí | Kết quả |
 |---|---|
 | **Cách ly phòng ban** | **10/10** — không rò rỉ tài liệu nào |
 | **Độ chính xác tool** (chọn đúng tool, tham số, phân quyền) | **30/30** |
 | **Từ chối đúng lúc** (không có nguồn / không có quyền) | **12/12** |
-| Trích dẫn hợp lệ (trỏ đúng nguồn đã truy xuất) | 38/38 |
-| Trích dẫn đúng tài liệu mong đợi (câu trả lời không có trích dẫn tính là sai) | 36/37 |
-| Trích dẫn thật sự hỗ trợ câu văn (LLM judge chấm từng trích dẫn) | 32/38 = 0.84 |
-| Dữ kiện tham chiếu được nêu đúng | 34/39 = 0.87 |
-| Trả lời đúng hoàn toàn | **64/71** (chấm tay: **67/71**) |
+| Trích dẫn hợp lệ (trỏ đúng nguồn đã truy xuất) | 33/33 |
+| Chặn bịa đặt (`must_not_contain`) | 29/29 |
+| Trả lời đúng hoàn toàn | **64/70** (chấm tay: 66/70) |
 | Truy xuất: Hit@1 · MRR (41 câu vàng, tìm kiếm lai) | 0.927 · 0.963 |
-| Độ trễ p50 / p95 (mô hình 3B chạy trên laptop, dao động theo tải máy) | 1.0–3.2 s / 2.3–5.0 s |
+| Độ trễ p50 / p95 | 1.4 s / 4.3 s |
 
-**So với mô hình không có RAG** (cùng mô hình, không truy xuất, không phân quyền): chỉ đúng **16%** dữ kiện (so với **87%** qua hệ thống), không có trích dẫn, và trả lời **5/5** câu mà người hỏi không có quyền hỏi.
+**So với mô hình không có RAG** (cùng mô hình, không truy xuất, không phân quyền): chỉ đúng **17%** dữ kiện (so với **87%** qua hệ thống), không có trích dẫn, và trả lời **5/5** câu mà người hỏi không có quyền hỏi.
 
 **Điểm quan trọng:** mọi tiêu chí *an toàn* (cách ly, phân quyền, phê duyệt) đạt 100% và được chấm **bằng luật, không dùng mô hình**. LLM judge chỉ chấm chất lượng câu văn.
 
-**Vì sao "chấm tay" cao hơn?** Điểm 64/71 do code đánh giá tự tính, không chỉnh tay ca nào. Đọc từng ca trong 7 ca trượt: **4 lỗi thật** (K08, M02, M01, M04), **2 lỗi của judge** (M03, M05: câu trả lời đúng nhưng judge chấm sai), **1 bộ lọc bắt nhầm** (E10: câu phủ định đúng "không xác nhận có trừ tiền trùng" chứa đúng cụm từ bị cấm). Mọi ca trượt đều in nguyên câu trả lời để người đọc tự kiểm tra.
+### Một phát hiện đã sửa (ví dụ về cách làm việc)
 
-### Bốn lỗi đã sửa hôm nay (ví dụ về cách làm việc)
+- **Vấn đề (ca L04):** hỏi "Tier 2 phải phản hồi SEV1 trong bao lâu?" → trả lời *30 phút* (sai, đúng là *10 phút*). Nguyên nhân: bảng trong PDF bị trích thành chuỗi phẳng, mô hình 3B đọc nhầm dòng.
+- **Cách sửa:** parser đọc toạ độ ô trong PDF, viết lại mỗi dòng bảng kèm nhãn cột:
+  `Tier 2 - platform (SEV1): Hours = 24/7; Acknowledge within = 10 minutes; ...`
+- **Kết quả:** trả lời đúng 3/3 lần; câu hỏi đối chứng về dòng bên cạnh vẫn đúng (30 phút); truy xuất không bị giảm.
 
-**1. Đọc nhầm dòng bảng trong PDF (ca L04).**
-- Hỏi "Tier 2 phải phản hồi SEV1 trong bao lâu?" → trả lời *30 phút* (sai, đúng là *10 phút*). Bảng trong PDF bị trích thành chuỗi phẳng, mô hình 3B đọc nhầm dòng.
-- Sửa: parser đọc toạ độ ô trong PDF, viết lại mỗi dòng kèm nhãn cột: `Tier 2 - platform (SEV1): Hours = 24/7; Acknowledge within = 10 minutes; ...`
-- Kết quả: đúng 3/3 lần; câu hỏi đối chứng về dòng bên cạnh vẫn đúng (30 phút); truy xuất không giảm (Hit@1 0.878 → 0.927).
+### Hạn chế — nói thẳng
 
-**2. Câu trả lời đúng nhưng không có trích dẫn** (phát hiện khi thử vai HR trên console).
-- Mô hình viết "according to source 1" thay vì `[1]`, nên hệ thống không nhận ra trích dẫn.
-- Sửa: tự chuyển "source 1" → `[1]`; console hiện nhãn đỏ **uncited** nếu vẫn không có trích dẫn.
-- Bộ đánh giá cũng có đúng điểm mù này (câu không trích dẫn vẫn được tính đạt) → đã sửa, giờ tính là trượt.
-
-**3. Câu hỏi hai phần bị từ chối cả câu.**
-- "Nhân viên có bao nhiêu ngày phép năm và phép ốm?" → từ chối, vì tài liệu không có chính sách phép ốm.
-- Thử 4 cách viết prompt trên dữ liệu thật; chọn cách cho kết quả đúng 5/6: *"14 ngày phép năm [1]. Tài liệu không đề cập phép ốm."*
-- **Cái giá:** mô hình 3B đôi khi thêm câu "nguồn không đề cập…" vào câu hỏi đã trả lời đủ. Đã ghi rõ trong báo cáo, không giấu.
-
-**4. Dữ kiện đúng nhưng gán nhầm nguồn (ca L03).**
-- Hỏi "Khi nào payment-worker được scale?" → trả lời đúng (*hàng đợi trên 5.000*) nhưng trích dẫn ghi chú sự cố, trong khi chỉ bảng giá năng lực [1] có con số 5.000.
-- Sửa: sau khi mô hình trả lời, backend so các con số trong từng câu với nguồn được trích; nếu con số không có trong nguồn đó mà có trong nguồn khác đã truy xuất → chuyển trích dẫn sang nguồn đúng. Không cần gọi thêm mô hình, và báo cáo đếm số lần chỉnh để không có sửa "ngầm".
-- Kết quả: L03 trích đúng nguồn 6/6 lần; các câu khác không bị đụng tới.
-
-### Hạn chế — nói thẳng (phương pháp đã đóng băng, các điểm này được ghi nhận chứ không tối ưu thêm)
-
-- **Gán nguồn chỉ được kiểm tra với câu có con số:** câu không có số vẫn có thể bị gán nhầm nguồn (vẫn là nguồn người dùng được phép xem — không rò rỉ).
-- **Câu "nguồn không đề cập…" thừa:** thường vô hại, nhưng ở K08 nó sai (nói nguồn không đề cập điều mà câu trước vừa trả lời).
-- **Câu trả lời có thể thiếu trích dẫn (M02):** console gắn nhãn **uncited** và bộ đánh giá tính là trượt, nhưng hệ thống chưa chặn.
-- **Tiền đề sai:** đôi khi từ chối thay vì đính chính ("sự cố kéo dài 3 giờ…" → nên trả lời "thực tế là 18 phút").
+- **Trích dẫn nhầm nguồn (L03):** dữ kiện đúng nhưng mô hình 3B gán cho tài liệu bên cạnh. Vẫn là nguồn người dùng được phép xem — không rò rỉ, nhưng trích dẫn sai.
+- **Tiền đề sai:** hệ thống từ chối thay vì đính chính ("sự cố kéo dài 3 giờ…" → nên trả lời "thực tế là 18 phút").
 - **Mô hình 3B là mức sàn:** các con số trên là cận dưới; gateway có thể chuyển sang mô hình lớn hơn mà không đổi code.
 - **SSO thật chưa có:** dùng bộ phát token dev thay cho IdP công ty.
 - **AWS mới thiết kế, chưa triển khai;** số liệu mở rộng suy ra từ đo đạc thực tế, chưa load test.
