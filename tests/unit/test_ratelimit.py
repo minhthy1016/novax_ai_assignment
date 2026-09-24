@@ -87,7 +87,8 @@ def test_identity_comes_from_a_verified_signature_not_the_raw_header() -> None:
     good = issue_token(cfg, "U001", "Senior Engineer")
     assert identity_of({"authorization": f"Bearer {good}"}, "10.0.0.1", cfg) == "user:U001"
 
-    forged = issue_token(Settings(env="test", jwt_secret="another-secret-entirely"), "U999", "x")
+    other = Settings(env="test", jwt_secret="another-secret-entirely-0123456789ab")
+    forged = issue_token(other, "U999", "x")
     # An unverifiable token buys no fresh budget: the caller falls back to their address.
     assert identity_of({"authorization": f"Bearer {forged}"}, "10.0.0.1", cfg) == "ip:10.0.0.1"
     assert identity_of({}, "10.0.0.1", cfg) == "ip:10.0.0.1"

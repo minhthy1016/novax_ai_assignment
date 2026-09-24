@@ -186,7 +186,7 @@ Each principle is implemented by specific decisions, recorded with their alterna
 ## Security and data boundaries
 
 The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
-Run them all with `make test-security` (102 tests).
+Run them all with `make test-security` (105 tests).
 
 **Identity.** A bearer token names the user *and their role*; both are re-checked against the
 database on every request, so a role change or a deactivated account is refused immediately.
@@ -617,9 +617,9 @@ that nothing it says can be checked, and it has no notion of who is asking.
 ```bash
 make install            # local venv via uv
 make lint               # ruff + mypy (strict)
-make test               # unit tests (149), no services needed
-make test-integration   # integration tests (59) against the running stack
-make test-security      # security tests (102): authz, isolation, injection, audit, egress
+make test               # unit tests (188), no services needed
+make test-integration   # integration tests (63) against the running stack
+make test-security      # security tests (105): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```
@@ -627,7 +627,7 @@ make test-all           # everything
 `make test-integration`, `make test-security` and `make test-eval` need `make up` and
 `make ingest` first. Security tests are tagged with a pytest marker and span both suites, so
 `make test-security` runs the unit-level policy tests and the end-to-end ones together;
-`uv run pytest -m "security and not integration"` runs only the 68 that need no services.
+`uv run pytest -m "security and not integration"` runs only the 79 that need no services.
 
 Deeper evaluation runs (they need Ollama, and the chunking comparison also needs the Docling
 export):

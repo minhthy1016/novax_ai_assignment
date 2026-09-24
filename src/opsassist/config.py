@@ -16,6 +16,8 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_JWT_SECRET = "dev-only-insecure-jwt-secret-change-me"  # noqa: S105 - sentinel, rejected outside dev
+# HS256 needs a key at least as long as its output (RFC 7518 §3.2).
+MIN_JWT_SECRET_BYTES = 32
 DEV_APP_DB_PASSWORD = "opsassist_app_dev"  # noqa: S105 - sentinel, rejected outside dev
 
 
@@ -117,8 +119,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_for_env(self) -> Settings:
-        if self.env in ("staging", "prod") and self.jwt_secret.get_secret_value() == DEV_JWT_SECRET:
-            raise ValueError("OPSASSIST_JWT_SECRET must be set outside dev/test environments")
+        if self.env in ("staging", "prod"):
+            secret = self.jwt_secret.get_secret_value()
+            if secret == DEV_JWT_SECRET:
+                raise ValueError("OPSASSIST_JWT_SECRET must be set outside dev/test environments")
+            if len(secret.encode()) < MIN_JWT_SECRET_BYTES:
+                raise ValueError(
+                    f"OPSASSIST_JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes "
+                    "outside dev/test environments"
+                )
         if (
             self.env in ("staging", "prod")
             and self.app_db_password.get_secret_value() == DEV_APP_DB_PASSWORD
