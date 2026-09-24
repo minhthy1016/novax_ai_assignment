@@ -39,6 +39,9 @@ say "U003 has no server:read: denied before the tool runs"
 chat U003 '{"message":"Check whether api-prod-02 is healthy"}' | jq '{status: .tool.status, message: .tool.message}'
 
 step "3 · Sensitive action: permission, confirmation, execution once, audit (E08)"
+say "the brief's own example request: proposed, held for an approver"
+chat U005 '{"message":"Create an OpenVPN profile for employee John Tan - with approval"}' \
+  | jq -c '{route, status: .tool.status}'
 PENDING=$(chat U005 '{"message":"Create a VPN profile for U006"}')
 echo "$PENDING" | jq '{status: .tool.status, message: .tool.message}'
 ID=$(echo "$PENDING" | jq -r .tool.pending_action_id)

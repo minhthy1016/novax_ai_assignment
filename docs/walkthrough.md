@@ -14,7 +14,6 @@ scripts/demo.sh --no-pause > /dev/null   # chạy một lần để nạp sẵn 
 - [ ] Ollama đang chạy và đã có `llama3.2:3b` + `nomic-embed-text`.
 - [ ] Đóng các ứng dụng nặng: máy 16 GB, mô hình cần RAM.
 - [ ] Mở sẵn: terminal cỡ chữ lớn, `README.md`, `docs/decisions/`, và file `docs/walkthrough-recording.txt` để dự phòng.
-- [ ] **Nếu PR #15 đã merge:** ở mục 3 dùng thêm câu ví dụ nguyên văn của đề bài (xem bên dưới).
 
 ## Kịch bản
 
@@ -36,12 +35,7 @@ Chạy `scripts/demo.sh`. Script dừng trước mỗi bước, bấm Enter đ�
 2. Bỏ ví dụ thì lúc đầu chọn tool giảm 30/30 → 32/34, có một yêu cầu tạo ticket không ai yêu cầu. Chặn skill ghi bằng code đã đưa về **34/34** (68/73 tổng thể, cùng judge-v2), mà không cần ví dụ nào.
 3. **Bộ đo mạnh lên rõ:** có test chống học tủ, judge khớp nhãn tay 36/39, 3 bên chấm độc lập, mã hash prompt trong mọi báo cáo.
 
-**Mục 3, câu ví dụ của đề bài.** Chỉ dùng khi PR #15 đã merge: trên `main` hiện tại router vẫn từ chối nhầm câu này.
-
-```bash
-chat U005 '{"message":"Create an OpenVPN profile for employee John Tan - with approval"}' \
-  | jq '{route, status: .tool.status, message: .tool.message}'     # → tool / pending
-```
+**Mục 3 mở đầu bằng câu ví dụ nguyên văn của đề bài** ("…John Tan - with approval"): router nhận đúng và tạo đề xuất *pending*. Nếu được hỏi, nói thêm: trước D-34 câu này từng bị từ chối nhầm, và đã được sửa bằng một quy tắc chứ không bằng ví dụ.
 
 ## Nếu có sự cố
 
