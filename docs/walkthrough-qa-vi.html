@@ -77,7 +77,7 @@
   <header>
     <span class="eyebrow">Review · Thứ Ba 29/09/2026</span>
     <h1>Câu hỏi hội đồng dễ hỏi</h1>
-    <p class="lede">19 câu hỏi, mỗi câu kèm câu trả lời ngắn để nói, bằng chứng để chỉ vào, và cách nói cần tránh. Đề bài yêu cầu ứng viên <b>hiểu và bảo vệ được mọi quyết định thiết kế</b> và <b>ghi rõ trung thực những phần chưa hoàn thiện</b>, nên câu trả lời nào cũng kết thúc bằng một thứ cho xem được.</p>
+    <p class="lede">20 câu hỏi, mỗi câu kèm câu trả lời ngắn để nói, bằng chứng để chỉ vào, và cách nói cần tránh. Đề bài yêu cầu ứng viên <b>hiểu và bảo vệ được mọi quyết định thiết kế</b> và <b>ghi rõ trung thực những phần chưa hoàn thiện</b>, nên câu trả lời nào cũng kết thúc bằng một thứ cho xem được.</p>
   </header>
 
   <div class="controls" role="toolbar" aria-label="Lọc theo chủ đề">
@@ -89,7 +89,7 @@
     <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Đánh giá</button>
     <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Mở rộng</button>
     <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Hạn chế</button>
-    <span class="count" id="count" aria-live="polite">19 câu hỏi</span>
+    <span class="count" id="count" aria-live="polite">20 câu hỏi</span>
     <button class="toggle" id="rehearse" aria-pressed="false">Luyện tập: ẩn câu trả lời</button>
   </div>
 
@@ -155,8 +155,8 @@
         </tr>
         <tr data-topic="tools">
           <td class="q">Nếu router chọn sai đường hoặc sai tool thì sao?<span class="topic">Tool &amp; phê duyệt</span></td>
-          <td class="answer" tabindex="0">Router chỉ chọn đường; phân quyền và phê duyệt diễn ra sau đó. Chọn nhầm "tool" thì vẫn bị từ chối hoặc phải chờ duyệt; chọn nhầm "refuse" thì assistant kém hữu ích nhưng không mất an toàn. Ví dụ thật: câu "…John Tan - with approval", chính là ví dụ trong đề, từng bị từ chối vì router 3B khớp chữ "approval" với "skip approval". Bản sửa prompt đã được đo: 54/54 quyết định đúng với 3 loại người dùng.</td>
-          <td class="evidence"><code>D-28</code>, <code>D-29</code>; PR #15</td>
+          <td class="answer" tabindex="0">Router chỉ chọn đường; schema, phân quyền và phê duyệt diễn ra sau đó. Chọn nhầm "tool" thì bị từ chối hoặc phải chờ duyệt; chọn nhầm "refuse" thì assistant kém hữu ích nhưng không mất an toàn. Ví dụ thật: câu ví dụ trong đề, "…John Tan - with approval", từng bị từ chối vì router 3B khớp chữ "approval" với "skip approval". Lỗi được sửa bằng một quy tắc, không bằng ví dụ: nhắc tới phê duyệt không phải là bỏ qua phê duyệt. Sau đó mô hình còn tự bịa tham số <code>approval_needed: false</code>, và schema chặt đã từ chối ngay.</td>
+          <td class="evidence"><code>D-28</code>, <code>D-34</code>; PR #15</td>
           <td class="avoid">"Router không thể sai."</td>
         </tr>
         <tr data-topic="tools">
@@ -185,15 +185,21 @@
         </tr>
         <tr data-topic="eval">
           <td class="q">Vì sao chỉ 63/71?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">63/71 là con số do bộ đánh giá tự tính trên một lần chạy sạch, tái lập được; không chỉnh tay ca nào. Chấm tay là 66/71, vì 3 ca trượt là do bên chấm sai. Cách ly, tool và từ chối đều đạt 100%, và được chấm bằng luật, không dùng mô hình. 5 lỗi thật đến từ mô hình trả lời 3B, vốn là mức sàn. Escalation sang mô hình lớn hơn (PR #14, đang chờ team lead) đo được 66/71 chấm tự động và 69/71 chấm tay.</td>
+          <td class="answer" tabindex="0">63/71 là con số do bộ đánh giá tự tính (dưới judge-v1) trên một lần chạy sạch, tái lập được; không chỉnh tay ca nào. Chấm tay là 66/71, vì 3 ca trượt là do bên chấm sai. Cách ly, tool và từ chối đều đạt 100%, và được chấm bằng luật, không dùng mô hình. 5 lỗi thật đến từ mô hình trả lời 3B, vốn là mức sàn. Escalation sang mô hình lớn hơn (PR #14, đang chờ team lead) đo được 66/71 chấm tự động và 69/71 chấm tay.</td>
           <td class="evidence"><code>evaluation/reports/evaluation.md</code>, <code>analysis.md</code>; <code>D-50</code></td>
           <td class="avoid">"Coi như 93%." Nói cả hai con số và vì sao chúng khác nhau.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Vì sao tin được LLM judge?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">Judge chỉ chấm câu văn. Mọi thứ liên quan an toàn (phân quyền, cách ly, thực thi, từ chối) được so bằng luật. Judge thuộc họ mô hình khác (Qwen chấm Llama), chạy local, và phải trích nguyên câu trả lời mới được kết luận là mâu thuẫn. Mọi ca trượt đều in câu trả lời, nên người đọc có thể bác kết quả của judge. Lỗi của judge được đếm, không che đi.</td>
-          <td class="evidence"><code>evaluation/judge.py</code>; <code>analysis.md</code></td>
+          <td class="answer" tabindex="0">Judge chỉ chấm câu văn; an toàn được chấm bằng luật. Có ba bên chấm cho ba câu hỏi riêng: dữ kiện chuẩn có được nêu không, trích dẫn này có hỗ trợ câu này không, và câu trả lời có nói gì ngoài nguồn không. Judge thuộc họ mô hình khác, chạy local, và phải trích nguyên văn câu trả lời. Code tự loại những gì kiểm tra được: kết luận "mâu thuẫn" mà câu trích lại nêu đúng dữ kiện, và claim "không có căn cứ" mà thật ra có trong nguồn. Judge cũng được đo với nhãn chấm tay trên cùng bộ câu trả lời: v1 đạt 35/39, v2 đạt 36/39.</td>
+          <td class="evidence"><code>evaluation/judge.py</code>, <code>judge-drift.md</code>, <code>judge_labels.jsonl</code> (PR #15)</td>
           <td class="avoid">"Judge luôn đúng."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Có "học tủ" prompt theo đúng bộ đánh giá của mình không?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">Có, và đã tự phát hiện ra. Ví dụ trong prompt router trùng 10 câu hỏi đánh giá, còn ví dụ của judge trùng đáp án của 3 ca. Đã gỡ bỏ, và giờ prompt chỉ còn quy tắc; tool đến router dưới dạng thẻ kỹ năng sinh từ code. Có test tự fail nếu prompt nào trùng câu chữ với câu hỏi hoặc đáp án đánh giá, hoặc nêu tên dữ liệu mẫu. Sau đó đo lại theo từng chế độ đo, không so chênh lệch điểm: trên cùng bộ câu trả lời, rubric judge mới chỉ đổi 1 kết luận. Router chỉ có quy tắc thì yếu hơn: một yêu cầu đã tạo ra ticket mà không ai yêu cầu. Điều đó được ghi lại, kèm cách sửa cần làm.</td>
+          <td class="evidence"><code>D-34</code>; <code>test_prompt_hygiene.py</code>; <code>rules-only-run.md</code> (PR #15)</td>
+          <td class="avoid">"Prompt của mình rất chung chung." Hãy nói đã phát hiện gì và phải trả giá gì.</td>
         </tr>
         <tr data-topic="scale">
           <td class="q">Mở rộng lên 5.000 nhân viên và 1 triệu tài liệu thế nào?<span class="topic">Mở rộng</span></td>

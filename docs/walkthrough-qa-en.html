@@ -77,7 +77,7 @@
   <header>
     <span class="eyebrow">Review · Tuesday 29 September 2026</span>
     <h1>Questions the panel is likely to ask</h1>
-    <p class="lede">Nineteen questions with a short answer to say out loud, the evidence to point at, and the phrasing to avoid. The brief says the candidate <b>must understand and defend every submitted design decision</b> and <b>document incomplete areas honestly</b>, so every answer ends on something you can show.</p>
+    <p class="lede">Twenty questions with a short answer to say out loud, the evidence to point at, and the phrasing to avoid. The brief says the candidate <b>must understand and defend every submitted design decision</b> and <b>document incomplete areas honestly</b>, so every answer ends on something you can show.</p>
   </header>
 
   <div class="controls" role="toolbar" aria-label="Filter by topic">
@@ -89,7 +89,7 @@
     <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Evaluation</button>
     <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Scale</button>
     <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Limits</button>
-    <span class="count" id="count" aria-live="polite">19 questions</span>
+    <span class="count" id="count" aria-live="polite">20 questions</span>
     <button class="toggle" id="rehearse" aria-pressed="false">Rehearse: hide answers</button>
   </div>
 
@@ -155,8 +155,8 @@
         </tr>
         <tr data-topic="tools">
           <td class="q">What if the router picks the wrong route or tool?<span class="topic">Tools &amp; approval</span></td>
-          <td class="answer" tabindex="0">The router only picks a path; authorization and approval happen after it. A wrong "tool" is still denied or held for approval, and a wrong "refuse" makes the assistant unhelpful but never unsafe. A real case: "…John Tan - with approval", the brief's own example, was refused because the 3B router matched "approval" to "skip approval". The prompt fix was measured: 54 of 54 decisions correct across three roles.</td>
-          <td class="evidence"><code>D-28</code>, <code>D-29</code>; PR #15</td>
+          <td class="answer" tabindex="0">The router only picks a path; schemas, permissions and approval come after it. A wrong "tool" is rejected, denied or held for approval, and a wrong "refuse" is unhelpful but never unsafe. A real case: the brief's own example, "…John Tan - with approval", was refused because the 3B router matched "approval" to "skip approval". It was fixed with a rule, not with examples: mentioning an approval is not bypassing it. When the model later invented an argument, <code>approval_needed: false</code>, the strict schema rejected it.</td>
+          <td class="evidence"><code>D-28</code>, <code>D-34</code>; PR #15</td>
           <td class="avoid">"The router can't be wrong."</td>
         </tr>
         <tr data-topic="tools">
@@ -185,15 +185,21 @@
         </tr>
         <tr data-topic="eval">
           <td class="q">Why 63/71 and not higher?<span class="topic">Evaluation</span></td>
-          <td class="answer" tabindex="0">63/71 is the harness's own output from a clean, reproducible run; nothing was adjusted. Read by hand it is 66/71: three failures were grader errors. Isolation, tool accuracy and abstention are 100%, graded by rules, not a model. The five real failures come from the 3B answering model, which is the floor. An escalation to a larger model (PR #14, awaiting the team lead) measured 66/71 strict and 69/71 by hand.</td>
+          <td class="answer" tabindex="0">63/71 is the harness's own output from a clean, reproducible run under judge-v1; nothing was adjusted. Read by hand it is 66/71: three failures were grader errors. Isolation, tool accuracy and abstention are 100%, graded by rules, not a model. The five real failures come from the 3B answering model, which is the floor. An escalation to a larger model (PR #14, awaiting the team lead) measured 66/71 strict and 69/71 by hand.</td>
           <td class="evidence"><code>evaluation/reports/evaluation.md</code>, <code>analysis.md</code>; <code>D-50</code></td>
           <td class="avoid">"It's basically 93%." Say both numbers and why they differ.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Why trust an LLM judge?<span class="topic">Evaluation</span></td>
-          <td class="answer" tabindex="0">It grades only prose. Anything safety-related (authorization, isolation, execution, abstention) is compared by rules. The judge is a different model family (Qwen judging Llama), runs locally, and must quote the answer to call a fact contradicted. Every failure prints the answer, so a reader can overrule it. Its errors are counted, not hidden.</td>
-          <td class="evidence"><code>evaluation/judge.py</code>; <code>analysis.md</code></td>
+          <td class="answer" tabindex="0">It grades only prose; safety is graded by rules. Three separate graders answer three questions: is this reference fact conveyed, does this citation support this sentence, and did the answer assert anything outside its sources. The judge is a different model family, runs locally, and must quote the answer. Code discards what it can check itself: a "contradiction" whose own quote states the fact, and an "unsupported" claim that is in the passage. The judge was also measured against hand labels on fixed answers: v1 35/39, v2 36/39.</td>
+          <td class="evidence"><code>evaluation/judge.py</code>, <code>judge-drift.md</code>, <code>judge_labels.jsonl</code> (PR #15)</td>
           <td class="avoid">"The judge is always right."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Did you tune your prompts to your own evaluation set?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">We found that we had. The router's examples overlapped 10 evaluation questions, and the judge's example was the reference answer of 3. We removed them, and now prompts hold only rules; tools reach the router as skill cards generated from code. A test fails if any prompt shares wording with an evaluation question or answer, or names a sample record. We then re-measured by regime, not as a delta. On the same answers the judge rubric changed one decision. The rules-only router is weaker: one request opened a ticket nobody asked for. That is recorded, with the fix it needs.</td>
+          <td class="evidence"><code>D-34</code>; <code>test_prompt_hygiene.py</code>; <code>rules-only-run.md</code> (PR #15)</td>
+          <td class="avoid">"Our prompts are generic." Say what was found and what it cost.</td>
         </tr>
         <tr data-topic="scale">
           <td class="q">How does this scale to 5,000 employees and 1M documents?<span class="topic">Scale</span></td>
