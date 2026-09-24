@@ -130,6 +130,43 @@ Exact citation support:     35/35
 
 ---
 
+### Phát hiện: prompt bị "học tủ" đã được gỡ bỏ — bộ đo (harness) mạnh lên rõ
+
+Rà soát mọi prompt, mình tìm thấy nội dung của bộ đánh giá nằm ngay trong prompt:
+- ví dụ trong prompt router trùng **10 câu hỏi đánh giá** (T07 gần như chép nguyên văn);
+- ví dụ của judge chính là **đáp án chuẩn của 3 ca** (E04, K18, M03).
+
+Đã gỡ bỏ. Giờ prompt chỉ chứa **quy tắc**; tool đến router dưới dạng **thẻ kỹ năng sinh từ code**; judge tách thành **3 bên chấm độc lập**. Chi tiết trong D-34.
+
+Hai lần chạy khác nhau cả router, judge và số ca, nên bảng dưới đây **đọc theo từng chỉ số**, không so chênh lệch điểm:
+
+| Tiêu chí đề bài | D5 · judge-v1 · 71 ca | Sau khi gỡ học tủ · judge-v2 · 73 ca | + chặn skill ghi · cùng judge, cùng ca | Đọc thế nào |
+|---|---|---|---|---|
+| Trả lời đúng hoàn toàn | 63/71 (88,7%) | 64/73 (87,7%) | 68/73 (93,2%) | ≈ như nhau |
+| Dữ kiện chuẩn được nêu đúng | 34/39 | 34/38 | 34/38 | ≈ như nhau; judge chấm nhầm "mâu thuẫn" 4 → 1 là do **judge** tốt hơn |
+| Truy xuất: top-4 · MRR | 37/39 · 0,923 | 37/39 · 0,923 | 37/39 · 0,923 | y hệt |
+| Trích dẫn hợp lệ | 100% | 100% | 100% | giữ nguyên |
+| Trích dẫn hỗ trợ đúng câu văn | 35/35 | 31/35 | 31/34 | **không so được**: judge-v2 khắt khe hơn |
+| Từ chối đúng | 12/12 | **10/12** | 11/12 | giảm: mô hình 3B từ chối bằng lời của nó (đã xử lý trong PR #14) |
+| Chọn tool | 30/30 | **32/34** | **34/34** | bỏ ví dụ thì router mất 1 câu và tạo 1 ticket không ai yêu cầu (T08); chặn skill ghi bằng code đưa về **34/34** mà prompt vẫn không có ví dụ |
+| Cách ly phòng ban | 10/10 | 10/10 | 10/10 | giữ nguyên |
+| Độ trễ p50 / p95 | 1,09 / 4,51 s | 1,25 / 4,39 s | xem báo cáo | ≈ như nhau |
+
+**Bỏ ví dụ thì lúc đầu hệ thống kém đi ở chọn tool và từ chối**: đó là con số thật của một router nhỏ không còn được "mớm" đáp án. **Sau đó, chặn skill ghi bằng code đã đưa chọn tool về 34/34** (68/73 tổng thể; so được với lần 64/73 vì cùng judge, cùng bộ ca), mà prompt vẫn không có ví dụ nào. **Và bộ đo thì mạnh lên rõ:**
+
+| | Trước | Sau |
+|---|---|---|
+| Kiểm tra prompt có trùng bộ đánh giá không | không có | có test tự fail; chạy trên prompt cũ bắt được router (10 ca) và judge (3 đáp án) |
+| Judge khớp nhãn chấm tay (cùng 39 câu trả lời) | 35/39 | **36/39** |
+| Câu trả lời đúng bị chấm nhầm là "mâu thuẫn" | 3 | **1** |
+| Chấm đúng / trích dẫn / không bịa | lẫn trong một lần chấm | **3 bên chấm độc lập** |
+| Báo động nhầm "không có căn cứ" | 31/31 câu trả lời | **7**, sau khi thêm kiểm tra bằng code |
+| Biết điểm số được đo bằng prompt nào | không | có mã hash prompt trong mọi báo cáo; công cụ đo độ lệch giữa hai phiên bản judge |
+
+**Kết quả chính thức cho buổi review vẫn là 63/71 (D5, judge-v1).** Phần này trình bày như một phát hiện về tính trung thực của bộ đánh giá: tự tìm ra, tự gỡ, đo lại và công khai cái giá.
+
+---
+
 ## 5. Đề xuất mở rộng trên AWS (D6)
 
 Mục tiêu: **5.000 nhân viên, 1 triệu tài liệu, 100 request đồng thời**, có cụm GPU. Kiến trúc giữ nguyên, từng tầng scale riêng. Sơ đồ AWS đầy đủ nằm trong `docs/decisions/D-60-scale-proposal-aws.md`.
@@ -160,6 +197,7 @@ Số liệu do `evaluation/capacity.py` tính ra (`make capacity`). Mỗi đầu
   - câu trả lời có thể thiếu trích dẫn (hệ thống gắn nhãn *uncited*, nhưng chưa chặn);
   - gán nguồn chỉ được kiểm tra với câu có con số;
   - đôi khi thêm câu "nguồn không đề cập…" không cần thiết, có lúc sai.
+- **Router nhỏ không có ví dụ thì yếu hơn:** câu quá ngắn có thể đi sai đường. Skill ghi dữ liệu (ticket, VPN) giờ bị code chặn nếu yêu cầu không nhắc tới đúng loại bản ghi đó.
 - **Mô hình 3B là mức sàn:** các con số là cận dưới; gateway có thể chuyển sang mô hình lớn hơn mà không đổi code.
 - **Chưa có SSO thật:** dùng token dev thay cho IdP công ty.
 - **AWS mới thiết kế, chưa triển khai và chưa load test.**

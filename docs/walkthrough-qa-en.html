@@ -1,0 +1,262 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpsAssist Review Questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F5F6F8; --surface: #FFFFFF; --ink: #18202C; --muted: #5A6474;
+    --rule: #DCE1E8; --accent: #2E5A87; --accent-soft: #E6EDF5;
+    --avoid: #A8402B; --avoid-soft: #F8E9E5;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+      --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+      --avoid: #E28D78; --avoid-soft: #2E1E1A; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+    --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+    --avoid: #E28D78; --avoid-soft: #2E1E1A; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  .page { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; }
+  header { display: grid; gap: 10px; margin-bottom: 26px; }
+  .eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; font-weight: 600; text-wrap: balance; }
+  .lede { margin: 0; max-width: 68ch; color: var(--muted); }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 14px; }
+  .chip, .toggle {
+    font: 500 13px/1 var(--sans); padding: 8px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .toggle { margin-left: auto; border-style: dashed; }
+  .toggle[aria-pressed="true"] { border-style: solid; border-color: var(--accent); color: var(--accent); }
+  .chip:focus-visible, .toggle:focus-visible, td.answer:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .count { font: 400 13px/1 var(--mono); color: var(--muted); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+       color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--rule); background: var(--surface); position: sticky; top: env(safe-area-inset-top, 0px); }
+  td { vertical-align: top; padding: 14px; border-bottom: 1px solid var(--rule); }
+  tr:last-child td { border-bottom: 0; }
+  td.q { width: 26%; font-weight: 600; }
+  td.q .topic { display: block; margin-top: 6px; font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  td.answer { width: 38%; }
+  td.evidence { width: 18%; font: 400 12.5px/1.5 var(--mono); color: var(--muted); }
+  td.evidence code { color: var(--ink); font-family: var(--mono); }
+  td.avoid { width: 18%; font-size: 13.5px; color: var(--avoid); background: var(--avoid-soft); }
+  td.avoid::before { content: "Don't say"; display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; opacity: .8; }
+  .rehearse td.answer:not(.shown) { filter: blur(5px); cursor: pointer; user-select: none; }
+  .rehearse td.answer:not(.shown)::after { content: ""; }
+  tr[hidden] { display: none; }
+  .notes { margin-top: 26px; display: grid; gap: 8px; max-width: 76ch; color: var(--muted); font-size: 14px; }
+  .notes h2 { margin: 0; font-size: 15px; color: var(--ink); }
+  .notes p { margin: 0; }
+  @media (max-width: 760px) {
+    .table-wrap { border: 0; background: none; overflow: visible; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tr { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+    td { width: 100% !important; border-bottom: 1px solid var(--rule); }
+    td.evidence::before { content: "Point to"; display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; }
+    .toggle { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <header>
+    <span class="eyebrow">Review · Tuesday 29 September 2026</span>
+    <h1>Questions the panel is likely to ask</h1>
+    <p class="lede">Twenty questions with a short answer to say out loud, the evidence to point at, and the phrasing to avoid. The brief says the candidate <b>must understand and defend every submitted design decision</b> and <b>document incomplete areas honestly</b>, so every answer ends on something you can show.</p>
+  </header>
+
+  <div class="controls" role="toolbar" aria-label="Filter by topic">
+    <button class="chip" id="t-all" data-topic="all" aria-pressed="true">All</button>
+    <button class="chip" id="t-arch" data-topic="arch" aria-pressed="false">Architecture</button>
+    <button class="chip" id="t-rag" data-topic="rag" aria-pressed="false">RAG</button>
+    <button class="chip" id="t-tools" data-topic="tools" aria-pressed="false">Tools &amp; approval</button>
+    <button class="chip" id="t-sec" data-topic="sec" aria-pressed="false">Security</button>
+    <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Evaluation</button>
+    <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Scale</button>
+    <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Limits</button>
+    <span class="count" id="count" aria-live="polite">20 questions</span>
+    <button class="toggle" id="rehearse" aria-pressed="false">Rehearse: hide answers</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="qa">
+      <thead>
+        <tr><th scope="col">Question</th><th scope="col">What to say</th><th scope="col">Point to</th><th scope="col">Avoid</th></tr>
+      </thead>
+      <tbody>
+        <tr data-topic="arch">
+          <td class="q">Why pgvector inside Postgres, not a dedicated vector database?<span class="topic">Architecture</span></td>
+          <td class="answer" tabindex="0">Permissions, document versions and vectors live in one transaction, and row-level security covers retrieval itself, so a forgotten filter still returns nothing. At 1M documents the index is ~84 GB; partitioned by department it is ~8.4 GB each, which fits. A dedicated store is step two, and its cost is explicit: isolation leaves the database.</td>
+          <td class="evidence"><code>D-01</code>, <code>D-22</code>, <code>D-60</code> sizing table; <code>make capacity</code></td>
+          <td class="avoid">"pgvector is faster." It was chosen for isolation and transactions, not speed.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">Why LangGraph? Does the agent decide what is allowed?<span class="topic">Architecture</span></td>
+          <td class="answer" tabindex="0">LangGraph gives a durable pause and resume: a VPN request waits for a second person across restarts through <code>interrupt()</code> and a Postgres checkpointer. The graph only chooses a path. Policy, tool schemas, pending actions and the audit log sit outside it and are unit-tested without a graph.</td>
+          <td class="evidence"><code>D-26</code>; <code>agent/graph.py</code>, <code>agent/service.py</code></td>
+          <td class="avoid">"The agent handles permissions." It never does.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">Why write your own model gateway instead of using LiteLLM?<span class="topic">Architecture</span></td>
+          <td class="answer" tabindex="0">The behaviour I have to defend lives there: retry with backoff, fallback chains, a circuit breaker per model, the egress rule by data classification, and a usage row for every attempt. Owning it keeps those rules testable and explainable. Providers are adapters behind one interface: NIM, Ollama, Claude and a deterministic mock.</td>
+          <td class="evidence"><code>D-10</code>, <code>D-11</code>, <code>D-14</code>, <code>D-15</code>; demo step 5</td>
+          <td class="avoid">"LiteLLM is bad." It was a scope and control trade-off, not a verdict.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">What happens if a provider fails in the middle of a streamed answer?<span class="topic">Architecture</span></td>
+          <td class="answer" tabindex="0">Fallback is allowed only before the first token. After that, switching models would splice two answers together, so the stream ends with a controlled error that carries the request id and no provider error text.</td>
+          <td class="evidence"><code>D-13</code>; <code>api/chat.py</code> stream path</td>
+          <td class="avoid">"It seamlessly continues on another model."</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">How did you choose chunk size and overlap?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">By measurement. Parent–child chunking (a ~64-token chunk is matched, its ≤256-token section is given to the model) was compared with per-page, fixed-window, structural and Docling chunkers on a gold set of 41 questions. The gain came from heading-aware sections; chunk size matters little (hybrid Hit@1 0.878–0.927 across 32–128 tokens, overlapping intervals). Production uses 64: Hit@1 0.927, MRR 0.963.</td>
+          <td class="evidence"><code>D-20</code>; <code>evaluation/reports/chunking.md</code></td>
+          <td class="avoid">"512 tokens is the industry standard."</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">Why nomic-embed-text and not a stronger embedding model?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Measured against NVIDIA nemotron-3-embed-1b on 40 gold cases, with confidential documents excluded so nothing restricted went to the API. With vector search alone nemotron ranks better (0.950 vs 0.825), but in the hybrid mode production runs they are identical (0.925 Hit@1). Nomic runs locally, sends nothing out, and is faster and cheaper.</td>
+          <td class="evidence">Experiment in PR #13 (closed: decision unchanged); <code>D-20</code></td>
+          <td class="avoid">"We never compared." We did, and the answer is no difference where it matters.</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">How do you know a citation isn't made up?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Three checks in code. A citation marker must point at a source that was retrieved for this user. A citation whose section lacks the figures in its sentence is moved to the retrieved section that has them, and the response counts it. An answer with no citation is flagged and counted as a miss. Judged per citation, 35 of 35 supported their exact claim.</td>
+          <td class="evidence"><code>rag.py</code> <code>finalize</code>, <code>repoint_citations</code>; <code>D-20</code></td>
+          <td class="avoid">"The model always cites correctly." It does not; the backend checks it.</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">What happens when a document is replaced?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">An unchanged content hash is a no-op. A new version is indexed and then swapped in atomically, so there are never two active copies. Failed ingestion jobs retry and then land in a dead-letter queue, and the old version stays active.</td>
+          <td class="evidence"><code>D-23</code>, <code>D-24</code>; <code>knowledge/ingest.py</code></td>
+          <td class="avoid">"We delete and re-insert." That would leave a window with no document.</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">Can the model create a VPN profile on its own?<span class="topic">Tools &amp; approval</span></td>
+          <td class="answer" tabindex="0">No. The model can only propose. A sensitive tool becomes a pending action: permissions are checked, and a different person with <code>vpn:approve</code> must confirm. The confirmation carries a hash of the exact arguments. It executes once, a second approval says "already executed", and every decision is in a hash-chained audit log.</td>
+          <td class="evidence"><code>D-31</code>, <code>D-32</code>; demo step 3; <code>/api/audit/verify</code></td>
+          <td class="avoid">"The prompt tells it to ask for approval." The approval is enforced in code.</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">What if the router picks the wrong route or tool?<span class="topic">Tools &amp; approval</span></td>
+          <td class="answer" tabindex="0">The router only picks a path; schemas, permissions and approval come after it. A wrong "tool" is rejected, denied or held for approval, and a wrong "refuse" is unhelpful but never unsafe. A real case: the brief's own example, "…John Tan - with approval", was refused because the 3B router matched "approval" to "skip approval". It was fixed with a rule, not with examples: mentioning an approval is not bypassing it. When the model later invented an argument, <code>approval_needed: false</code>, the strict schema rejected it.</td>
+          <td class="evidence"><code>D-28</code>, <code>D-34</code>; PR #15</td>
+          <td class="avoid">"The router can't be wrong."</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">Is tool execution idempotent?<span class="topic">Tools &amp; approval</span></td>
+          <td class="answer" tabindex="0">Yes, where it matters. A repeated ticket request within the window returns the existing ticket. An approved action runs once; approving it again is denied. Tool results shown to the user are rendered from the stored record, not summarized by the model, so success cannot be invented.</td>
+          <td class="evidence"><code>tools/executor.py</code>; <code>test_ticket_is_created_once…</code></td>
+          <td class="avoid">"The model reports the result." The server renders it from real data.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">How is department isolation enforced?<span class="topic">Security</span></td>
+          <td class="answer" tabindex="0">Two layers below the model: a SQL scope filter, and Postgres row-level security under a non-superuser runtime role. A test found that a superuser bypassed RLS, and a migration fixed it. Confidential material is in a separate table and goes only to local models. An Engineering user gets nothing, not even a title: isolation held in 10 of 10 cases.</td>
+          <td class="evidence"><code>D-17</code>, <code>D-22</code>, <code>D-15</code>; demo step 6</td>
+          <td class="avoid">Anything that sounds like "the prompt tells it not to show HR data". The brief calls that unacceptable.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">How do you resist prompt injection from documents?<span class="topic">Security</span></td>
+          <td class="answer" tabindex="0">Retrieved text is untrusted data: it is escaped inside source tags and has no authority. The knowledge path has no tools at all, and tool calls are authorized outside the model. The malicious document is retrieved (it is legitimate content), its instructions are not followed, and "skip confirmation" still ends as a pending action.</td>
+          <td class="evidence"><code>D-25</code>; demo step 4; <code>make test-security</code> (105 tests)</td>
+          <td class="avoid">"The model is trained to ignore injections." The defence does not depend on the model.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">Where are secrets, and can they leak?<span class="topic">Security</span></td>
+          <td class="answer" tabindex="0">Secrets come from the environment and are typed <code>SecretStr</code>, so they never appear in repr or logs. They never go to the model. Staging and production refuse the dev JWT secret or any secret under 32 bytes. Persistent memory rejects credential-shaped values. The repository contains no real keys.</td>
+          <td class="evidence"><code>config.py</code>; <code>D-40</code>; <code>test_config.py</code></td>
+          <td class="avoid">"We rely on developers not to commit keys."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Why 63/71 and not higher?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">63/71 is the harness's own output from a clean, reproducible run under judge-v1; nothing was adjusted. Read by hand it is 66/71: three failures were grader errors. Isolation, tool accuracy and abstention are 100%, graded by rules, not a model. The five real failures come from the 3B answering model, which is the floor. An escalation to a larger model (PR #14, awaiting the team lead) measured 66/71 strict and 69/71 by hand.</td>
+          <td class="evidence"><code>evaluation/reports/evaluation.md</code>, <code>analysis.md</code>; <code>D-50</code></td>
+          <td class="avoid">"It's basically 93%." Say both numbers and why they differ.</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Why trust an LLM judge?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">It grades only prose; safety is graded by rules. Three separate graders answer three questions: is this reference fact conveyed, does this citation support this sentence, and did the answer assert anything outside its sources. The judge is a different model family, runs locally, and must quote the answer. Code discards what it can check itself: a "contradiction" whose own quote states the fact, and an "unsupported" claim that is in the passage. The judge was also measured against hand labels on fixed answers: v1 35/39, v2 36/39.</td>
+          <td class="evidence"><code>evaluation/judge.py</code>, <code>judge-drift.md</code>, <code>judge_labels.jsonl</code> (PR #15)</td>
+          <td class="avoid">"The judge is always right."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Did you tune your prompts to your own evaluation set?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">We found that we had. The router's examples overlapped 10 evaluation questions, and the judge's example was the reference answer of 3. We removed them, and now prompts hold only rules; tools reach the router as skill cards generated from code. A test fails if any prompt shares wording with an evaluation question or answer, or names a sample record. We then re-measured by regime, not as a delta. On the same answers the judge rubric changed one decision. Without examples the router first got weaker: one request opened a ticket nobody asked for. A guard in code now holds back any skill that writes when the request never names its record, and tool accuracy is back to 34/34, still with no examples in the prompt.</td>
+          <td class="evidence"><code>D-34</code>; <code>test_prompt_hygiene.py</code>; <code>rules-only-run.md</code> (PR #15)</td>
+          <td class="avoid">"Our prompts are generic." Say what was found and what it cost.</td>
+        </tr>
+        <tr data-topic="scale">
+          <td class="q">How does this scale to 5,000 employees and 1M documents?<span class="topic">Scale</span></td>
+          <td class="answer" tabindex="0">The architecture is unchanged; each tier scales on its own. Sizing is generated from stated inputs: ~47M chunks, an ~84 GB index partitioned by department, and 10 L4 GPUs (4 × g6.12xlarge, N+1) at the 100-request ceiling. The ceiling is about 13 times the expected average, so GPUs autoscale on queue depth with a floor of two. Confidential data stays on vLLM inside the VPC.</td>
+          <td class="evidence"><code>D-60</code> with its AWS diagram; <code>make capacity</code></td>
+          <td class="avoid">"It's been load-tested." It has not; say which three measurements come first.</td>
+        </tr>
+        <tr data-topic="limits">
+          <td class="q">What would you do with one more week?<span class="topic">Limits</span></td>
+          <td class="answer" tabindex="0">Correct false premises instead of abstaining (a product decision to agree first); escalate streamed answers too; replace the dev token issuer with OIDC; give the API and the worker separate database roles; run the load test D-60 names; route knowledge-gap tickets to a named owner.</td>
+          <td class="evidence">README "Known limitations"; <code>analysis.md</code> "What is still open"</td>
+          <td class="avoid">"Nothing, it's finished."</td>
+        </tr>
+        <tr data-topic="limits">
+          <td class="q">Did you use AI assistance, and can you defend the result?<span class="topic">Limits</span></td>
+          <td class="answer" tabindex="0">Yes, as the brief allows. Every design decision is written down with the alternatives considered and, where possible, a measurement I can reproduce here: <code>make eval</code>, <code>make capacity</code>, <code>scripts/demo.sh</code>. Where a result did not hold up, the report says so.</td>
+          <td class="evidence"><code>docs/decisions/</code> (35 records); <code>docs/traceability.md</code></td>
+          <td class="avoid">Claiming a number you cannot reproduce live.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="notes">
+    <h2>Using this sheet</h2>
+    <p>Rehearse mode blurs every answer; click an answer, or press Enter on it, to reveal it after you have said yours out loud. The topic chips narrow the list for a focused pass. The Vietnamese version is <code>walkthrough-qa-vi.html</code>; the timed demo script is <code>walkthrough.md</code>.</p>
+  </section>
+</div>
+
+<script>
+  (function () {
+    const rows = Array.from(document.querySelectorAll("#qa tbody tr"));
+    const chips = Array.from(document.querySelectorAll(".chip"));
+    const count = document.getElementById("count");
+    const rehearse = document.getElementById("rehearse");
+    const one = count.textContent.replace(/^\d+\s*/, "");
+    function filter(topic) {
+      let shown = 0;
+      rows.forEach((row) => {
+        const on = topic === "all" || row.dataset.topic === topic;
+        row.hidden = !on;
+        if (on) shown += 1;
+      });
+      chips.forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.topic === topic)));
+      count.textContent = shown + " " + one;
+    }
+    chips.forEach((c) => c.addEventListener("click", () => filter(c.dataset.topic)));
+    rehearse.addEventListener("click", () => {
+      const on = rehearse.getAttribute("aria-pressed") !== "true";
+      rehearse.setAttribute("aria-pressed", String(on));
+      document.body.classList.toggle("rehearse", on);
+      document.querySelectorAll("td.answer.shown").forEach((td) => td.classList.remove("shown"));
+    });
+    document.querySelectorAll("td.answer").forEach((td) => {
+      const reveal = () => { if (document.body.classList.contains("rehearse")) td.classList.toggle("shown"); };
+      td.addEventListener("click", reveal);
+      td.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); reveal(); } });
+    });
+  })();
+</script>
