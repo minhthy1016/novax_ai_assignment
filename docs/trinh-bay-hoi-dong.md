@@ -89,9 +89,15 @@ make eval                  # bộ đánh giá 71 ca
 
 ---
 
-## 4. Kết quả đánh giá — lần chạy cuối, sạch, tái lập được
+## 4. Kết quả đánh giá
 
-Chạy từ `main` ở trạng thái sạch: xoá database, build lại, nạp lại 11 tài liệu mẫu, chạy đủ 71 ca. Mô hình trả lời là `llama3.2:3b`, mô hình chấm là `qwen2.5:7b`.
+71 ca kiểm thử, mỗi ca là một nhân viên hỏi một câu, trải đủ 8 nhóm đề bài yêu cầu. Lần chạy cuối được làm từ trạng thái sạch (xoá database, build lại, nạp lại tài liệu mẫu), nên tái lập được. Mô hình trả lời là `llama3.2:3b`, mô hình chấm là `qwen2.5:7b` (khác họ mô hình, chạy local).
+
+**Hai cách chấm:**
+- **Bằng luật, chính xác tuyệt đối:** phân quyền, cách ly, gọi tool, từ chối.
+- **Bằng LLM judge:** chỉ chấm chất lượng câu văn.
+
+Điểm do code tự tính, không chỉnh tay ca nào.
 
 ```text
 Strict correctness:        63/71 (88.7%)
@@ -104,23 +110,23 @@ Citation validity:          36/36
 Exact citation support:     35/35
 ```
 
-- **Mọi tiêu chí an toàn đạt 100%**, và được chấm **bằng luật, không dùng mô hình**.
-- **So với cùng mô hình nhưng không có RAG:** chỉ đúng 16% dữ kiện (hệ thống: 87%), không có trích dẫn, và trả lời 5/5 câu người hỏi không có quyền hỏi.
-- **8 ca trượt, đọc từng ca:**
-  - 5 lỗi thật: E12, K08, M02, M01, M04;
-  - 2 lỗi do judge chấm sai: M03, M05;
-  - 1 bộ lọc bắt nhầm: E09.
+| Tiêu chí (theo đề bài) | Kết quả |
+|---|---|
+| **Trả lời đúng** | 63/71 ca đúng hoàn toàn (88,7%), 66/71 khi chấm tay · dữ kiện tham chiếu được nêu đúng 34/39 (87%) |
+| **Truy xuất đúng tài liệu** | nguồn đúng nằm trong top-4: 37/39 (94,9%) · MRR 0,923 |
+| **Trích dẫn đúng** | trích dẫn hợp lệ 36/36 · hỗ trợ đúng câu văn 35/35 · trích đúng tài liệu mong đợi 36/37 |
+| **Chống bịa đặt (hallucination)** | bộ lọc cụm từ cấm 28/29 (lần trượt là một câu từ chối đúng) · từ chối đúng lúc 12/12 |
+| **Gọi tool** | 30/30 (đúng tool, đúng tham số, đúng phân quyền và xác nhận) |
+| **Cách ly phòng ban** | 10/10, không rò rỉ tài liệu nào |
+| **Hiệu năng · chi phí** | p50 1,1 s / p95 4,5 s · ~490 token mỗi ca · $0 (mô hình chạy local) |
 
-  Điểm 63/71 do code tự tính, không chỉnh tay ca nào.
+**So với cùng mô hình nhưng không có RAG:**
 
-**Bốn lỗi tìm ra và đã sửa:**
-
-| Lỗi | Sửa | Kết quả |
+| | Không có RAG | Có hệ thống |
 |---|---|---|
-| **L04:** đọc nhầm dòng bảng PDF (30 phút thay vì 10) | Parser viết lại mỗi dòng bảng kèm nhãn cột | Đúng 3/3 |
-| Câu trả lời đúng nhưng **không có trích dẫn** | Chuyển "source 1" thành `[1]`; console gắn nhãn *uncited*; bộ đánh giá tính là trượt | Hết bị bỏ sót |
-| Câu hỏi hai phần bị **từ chối cả câu** | Trả lời phần có nguồn, nói rõ phần không có | Đúng 5/6 |
-| **L03:** dữ kiện đúng nhưng **gán nhầm nguồn** | Backend so con số trong câu với nguồn, chuyển trích dẫn sang nguồn đúng | Đúng 6/6 |
+| Dữ kiện đúng | 16% | 87% |
+| Trích dẫn | không có | có |
+| Câu người hỏi không có quyền hỏi | trả lời 5/5 | không trả lời |
 
 ---
 
@@ -153,7 +159,7 @@ Số liệu do `evaluation/capacity.py` tính ra (`make capacity`). Mỗi đầu
 - **Trích dẫn:**
   - câu trả lời có thể thiếu trích dẫn (hệ thống gắn nhãn *uncited*, nhưng chưa chặn);
   - gán nguồn chỉ được kiểm tra với câu có con số;
-  - đôi khi có câu "nguồn không đề cập…" thừa, và ở K08 câu đó sai.
+  - đôi khi thêm câu "nguồn không đề cập…" không cần thiết, có lúc sai.
 - **Mô hình 3B là mức sàn:** các con số là cận dưới; gateway có thể chuyển sang mô hình lớn hơn mà không đổi code.
 - **Chưa có SSO thật:** dùng token dev thay cho IdP công ty.
 - **AWS mới thiết kế, chưa triển khai và chưa load test.**
