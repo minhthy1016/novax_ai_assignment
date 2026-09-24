@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import statistics
@@ -95,6 +96,23 @@ class CaseResult:
 
 
 # ------------------------------------------------------------------ the run
+
+
+def prompt_versions() -> dict[str, str]:
+    """Short hashes of every prompt the run depends on, so a score can be tied to the exact
+    rules and skill cards that produced it (D-34). The API must run the same code."""
+    from evaluation.judge import CITATION_PROMPT, GROUNDING_PROMPT, JUDGE_PROMPT
+    from opsassist.agent.graph import router_prompt
+    from opsassist.rag import SYSTEM_PROMPT
+
+    def short(text: str) -> str:
+        return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+    return {
+        "router": short(router_prompt()),
+        "answer": short(SYSTEM_PROMPT),
+        "judge": short(JUDGE_PROMPT + CITATION_PROMPT + GROUNDING_PROMPT),
+    }
 
 
 def token_for(api: httpx.Client, user: str, cache: dict[str, str]) -> str:
@@ -299,7 +317,7 @@ def run_case(
             result.citation_support.append(
                 {"ref": citation["ref"], "claim": claim[:160], "supports": supports}
             )
-        if not case.get("reference_facts") and result.answer and not body.get("abstained"):
+        if result.answer and not body.get("abstained"):
             judgement = judge.judge_grounding(case["prompt"], result.answer, passages)
             result.unsupported_claims += judgement.unsupported
     return result
@@ -364,6 +382,8 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         f"* cases: **{total}** across {len(by_category)} categories · "
         f"passed every deterministic check and fact: **{passed}/{total}**",
         f"* wall clock: {meta['duration_s']:.0f}s",
+        "* prompts (sha256, first 12): "
+        + " · ".join(f"{k} `{v}`" for k, v in meta.get("prompts", {}).items()),
         "",
         "## Headline",
         "",
@@ -546,6 +566,7 @@ def main() -> None:
         "answer_family": family_of(answer_model),
         "judge_family": family_of(args.judge) if judge else "none",
         "duration_s": time.perf_counter() - started,
+        "prompts": prompt_versions(),
     }
     report = summarize(results, meta)
     if args.control and judge:

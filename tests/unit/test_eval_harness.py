@@ -140,3 +140,29 @@ def test_a_verdict_the_judge_cannot_quote_is_discarded() -> None:
     )
     assert judge.judge_fact("q", "14 days", "Staff get two weeks plus.", []).verdict == "supported"
     judge.close()
+
+
+def test_grounding_drops_claims_the_passages_visibly_contain() -> None:
+    from evaluation.judge import _found_in
+
+    passages = ["SEV2: update the status page every 60 minutes."]
+    assert _found_in("The status page is updated every 60 minutes for SEV2 incidents", passages)
+    # A changed number, a new entity or an unrelated statement is kept for the report.
+    assert not _found_in("The status page is updated every 30 minutes for SEV2", passages)
+    assert not _found_in("The status page is updated every 60 minutes for SEV1", passages)
+    assert not _found_in("Deployments are allowed on Fridays", passages)
+
+
+def test_a_contradiction_whose_quote_states_the_fact_is_discarded(monkeypatch) -> None:
+    from evaluation import judge as judge_module
+
+    judge = judge_module.Judge("ollama/qwen2.5:7b")
+    answer = "No, according to the policy [1], employees receive 14 days of annual leave."
+    reply = (
+        '{"verdict": "contradicted", "quote": "employees receive 14 days of annual leave", '
+        '"note": "x"}'
+    )
+    monkeypatch.setattr(judge, "_complete", lambda *_: reply)
+    verdict = judge.judge_fact("21 days, right?", "Employees receive 14 days of annual leave",
+                               answer, [])  # fmt: skip
+    assert verdict.verdict is None and verdict.unverified

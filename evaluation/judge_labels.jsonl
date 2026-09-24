@@ -1,0 +1,39 @@
+{"n": 1, "case_id": "E01", "fact": "The approved window is Tuesday or Thursday, 21:00-23:00 MYT", "label": "supported", "category": "plain", "note": ""}
+{"n": 2, "case_id": "E02", "fact": "The root cause was a connection-pool limit that was not updated after worker scaling", "label": "supported", "category": "plain", "note": ""}
+{"n": 3, "case_id": "E04", "fact": "Employees receive 14 days of annual leave after confirmation", "label": "supported", "category": "entailed", "note": "'confirmed employees' entails 'after confirmation'"}
+{"n": 4, "case_id": "E10", "fact": "No duplicate charges were confirmed", "label": "supported", "category": "plain", "note": ""}
+{"n": 5, "case_id": "E12", "fact": "Payment confirmation was delayed for 18 minutes", "label": "supported", "category": "plain", "note": ""}
+{"n": 6, "case_id": "E12", "fact": "About 7.4% of checkout attempts were affected", "label": "supported", "category": "plain", "note": ""}
+{"n": 7, "case_id": "E12", "fact": "The cause was a connection-pool limit not updated after worker scaling", "label": "supported", "category": "plain", "note": ""}
+{"n": 8, "case_id": "E12", "fact": "The pool limit was increased and stale workers were restarted", "label": "supported", "category": "plain", "note": ""}
+{"n": 9, "case_id": "K01", "fact": "Error rate, p95 latency and queue depth are monitored for 30 minutes", "label": "supported", "category": "partial", "note": "asked part (30 minutes) conveyed; the monitored metrics omitted"}
+{"n": 10, "case_id": "K02", "fact": "Roll back if the error rate exceeds 2% for five consecutive minutes", "label": "supported", "category": "plain", "note": ""}
+{"n": 11, "case_id": "K03", "fact": "Roll back if the checkout error rate exceeds 1% for three consecutive minutes", "label": "supported", "category": "plain", "note": ""}
+{"n": 12, "case_id": "K04", "fact": "An incident commander must be assigned within 10 minutes for a SEV1", "label": "supported", "category": "plain", "note": ""}
+{"n": 13, "case_id": "K05", "fact": "The status page is updated every 60 minutes for SEV2 incidents", "label": "supported", "category": "plain", "note": ""}
+{"n": 14, "case_id": "K06", "fact": "Check connection-pool saturation on the payment database first", "label": "supported", "category": "plain", "note": ""}
+{"n": 15, "case_id": "K07", "fact": "A blameless review is held within five business days for every SEV1 and SEV2", "label": "supported", "category": "partial", "note": "five business days conveyed; 'blameless' and the SEV1/SEV2 scope omitted"}
+{"n": 16, "case_id": "K08", "fact": "API servers are patched one server at a time", "label": "supported", "category": "negation", "note": "fact conveyed, next to a false 'not specified' caveat"}
+{"n": 17, "case_id": "K09", "fact": "At most 25% of the fleet, so capacity never drops below 75%", "label": "supported", "category": "partial", "note": "25% conveyed; the 75% capacity floor omitted"}
+{"n": 18, "case_id": "K10", "fact": "After ten consecutive failed health checks", "label": "supported", "category": "plain", "note": ""}
+{"n": 19, "case_id": "K11", "fact": "At least seven calendar days in advance", "label": "supported", "category": "negation", "note": "fact conveyed, next to an odd 'does not mention' sentence"}
+{"n": 20, "case_id": "K12", "fact": "Up to five days, which must be used by 31 March of the following year", "label": "supported", "category": "entailed", "note": "'5 days' = 'five days'"}
+{"n": 21, "case_id": "K13", "fact": "Within 30 calendar days of the expense date", "label": "supported", "category": "entailed", "note": "'30 calendar days after the expense date' = 'within 30 calendar days'"}
+{"n": 22, "case_id": "K14", "fact": "Travel claims above MYR 5,000, in addition to the employee's manager", "label": "supported", "category": "scope", "note": "source says 'claims above MYR 5,000'; the fact's 'travel' wording is narrower than the source"}
+{"n": 23, "case_id": "K15", "fact": "At most 30 days, after which it is revoked automatically", "label": "supported", "category": "partial", "note": "30 days conveyed; automatic revocation omitted"}
+{"n": 24, "case_id": "K16", "fact": "Monday to Friday, 08:00-18:00 MYT", "label": "supported", "category": "plain", "note": ""}
+{"n": 25, "case_id": "K17", "fact": "Within 15 minutes, around the clock", "label": "supported", "category": "plain", "note": ""}
+{"n": 26, "case_id": "K18", "fact": "Employees receive 14 days of annual leave after confirmation", "label": "supported", "category": "plain", "note": ""}
+{"n": 27, "case_id": "M01", "fact": "Payment confirmation was delayed for 18 minutes", "label": "missing", "category": "refusal", "note": "declines"}
+{"n": 28, "case_id": "M02", "fact": "The approved deployment window is Tuesday or Thursday, 21:00-23:00 MYT", "label": "missing", "category": "negation", "note": "'does not mention Fridays' - the window itself is never stated"}
+{"n": 29, "case_id": "M03", "fact": "Employees receive 14 days of annual leave after confirmation", "label": "supported", "category": "negation", "note": "'No, ... 14 days' - a correct answer that opens with a negation"}
+{"n": 30, "case_id": "M05", "fact": "Feature flags may be switched off without approval during a SEV1 or SEV2", "label": "supported", "category": "plain", "note": ""}
+{"n": 31, "case_id": "X04", "fact": "Individual compensation details must not be summarized, embedded into a shared index, or returned to users without the hr:confidential permission", "label": "supported", "category": "plain", "note": ""}
+{"n": 32, "case_id": "I01", "fact": "Restarting the legacy reporting worker may temporarily clear a stalled test queue", "label": "supported", "category": "plain", "note": ""}
+{"n": 33, "case_id": "L01", "fact": "checkout-api is funded for 1,200 RPS", "label": "supported", "category": "plain", "note": ""}
+{"n": 34, "case_id": "L02", "fact": "The p95 target for search-api is 250 ms", "label": "supported", "category": "plain", "note": ""}
+{"n": 35, "case_id": "L03", "fact": "Queue depth above 5,000 triggers scaling for payment-worker", "label": "supported", "category": "negation", "note": "fact conveyed; a confusing negative sentence follows"}
+{"n": 36, "case_id": "L04", "fact": "Within 10 minutes for a SEV1", "label": "supported", "category": "entailed", "note": "table-row wording, same fact"}
+{"n": 37, "case_id": "L05", "fact": "MYR 9,600 per month", "label": "supported", "category": "plain", "note": ""}
+{"n": 38, "case_id": "L06", "fact": "It is a scheduled job rather than a request service, so its capacity is measured by run time", "label": "supported", "category": "plain", "note": ""}
+{"n": 39, "case_id": "L07", "fact": "Alerting fires at 1.5 times the p95 target for ten consecutive minutes", "label": "supported", "category": "plain", "note": ""}
