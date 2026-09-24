@@ -50,16 +50,17 @@ class Inputs:
     embed_laptop_chunks_per_s: int = 164  # M: nomic-embed-text, Ollama, batch 128, Apple M5
     embed_gpu_chunks_per_s: int = 2_000  # A: same model on one L4
     daily_changed_fraction: float = 0.01  # A: 1% of documents change per day
-    # ---- storage (pgvector halfvec(768), text and parent context denormalised per child)
+    # ---- storage (pgvector halfvec(768); each chunk row also stores its section's text)
     vector_bytes: int = 768 * 2
-    child_text_bytes: int = 250  # M: children target ~64 tokens
-    parent_context_bytes: int = 1_000  # M: parents cap at ~256 tokens
+    chunk_text_bytes: int = 250  # M: chunks target ~64 tokens
+    section_text_bytes: int = 1_000  # M: sections cap at ~256 tokens
     row_overhead_bytes: int = 250  # A: metadata columns, tuple header, TOAST pointers
     hnsw_bytes_per_row: int = 1_800  # A: pgvector HNSW (m=16) stores the vector plus links
 
 
-def children_per_1k_tokens() -> float:
-    """Measured: child chunks the production chunker makes per 1,000 tokens of text."""
+def chunks_per_1k_tokens() -> float:
+    """Measured: search chunks (the small, embedded passages) the production chunker makes
+    per 1,000 tokens of text."""
     tokens = chunks = 0
     for path in sorted(KNOWLEDGE.glob("KB-*")):
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
@@ -73,7 +74,7 @@ def children_per_1k_tokens() -> float:
 @dataclass(frozen=True)
 class Sizing:
     density: float
-    children: float
+    chunks: float
     heap_gb: float
     hnsw_gb: float
     hnsw_gb_per_department: float
@@ -93,11 +94,11 @@ class Sizing:
 
 def size(i: Inputs | None = None) -> Sizing:
     i = i or Inputs()
-    density = children_per_1k_tokens()
-    children = i.documents * i.avg_document_tokens / 1_000 * density
-    row = i.vector_bytes + i.child_text_bytes + i.parent_context_bytes + i.row_overhead_bytes
-    heap_gb = children * row / 1e9
-    hnsw_gb = children * i.hnsw_bytes_per_row / 1e9
+    density = chunks_per_1k_tokens()
+    chunks = i.documents * i.avg_document_tokens / 1_000 * density
+    row = i.vector_bytes + i.chunk_text_bytes + i.section_text_bytes + i.row_overhead_bytes
+    heap_gb = chunks * row / 1e9
+    hnsw_gb = chunks * i.hnsw_bytes_per_row / 1e9
 
     # Little's law at the brief's ceiling: 100 requests in flight, each streaming its answer.
     answer_seconds = i.output_tokens / i.stream_tokens_per_s + 1.0  # + retrieval and prefill
@@ -111,7 +112,7 @@ def size(i: Inputs | None = None) -> Sizing:
 
     return Sizing(
         density=density,
-        children=children,
+        chunks=chunks,
         heap_gb=heap_gb,
         hnsw_gb=hnsw_gb,
         hnsw_gb_per_department=hnsw_gb / i.departments,
@@ -124,12 +125,9 @@ def size(i: Inputs | None = None) -> Sizing:
         gpus=gpus,
         gpu_nodes=nodes,
         tokens_per_day=per_day * (i.prompt_tokens + i.output_tokens),
-        initial_index_hours_gpu=children / i.embed_gpu_chunks_per_s / 3600,
-        initial_index_days_laptop=children / i.embed_laptop_chunks_per_s / 86_400,
-        daily_reindex_minutes_gpu=children
-        * i.daily_changed_fraction
-        / i.embed_gpu_chunks_per_s
-        / 60,
+        initial_index_hours_gpu=chunks / i.embed_gpu_chunks_per_s / 3600,
+        initial_index_days_laptop=chunks / i.embed_laptop_chunks_per_s / 86_400,
+        daily_reindex_minutes_gpu=chunks * i.daily_changed_fraction / i.embed_gpu_chunks_per_s / 60,
     )
 
 
@@ -138,7 +136,7 @@ def tables(i: Inputs | None = None) -> str:
     s = size(i)
     rows_in = [
         (
-            "Child chunks per 1,000 tokens",
+            "Search chunks per 1,000 tokens",
             f"{s.density:.1f}",
             M,
             "production chunker on the sample corpus",
@@ -178,7 +176,7 @@ def tables(i: Inputs | None = None) -> str:
         ("Departments", f"{i.departments}", A, "partitions of the vector tier"),
     ]
     rows_out = [
-        (f"Child chunks at {i.documents / 1e6:.0f}M documents", f"~{s.children / 1e6:.0f} M"),
+        (f"Search chunks at {i.documents / 1e6:.0f}M documents", f"~{s.chunks / 1e6:.0f} M"),
         ("Chunk table (heap)", f"~{s.heap_gb:.0f} GB"),
         ("HNSW index, all departments", f"~{s.hnsw_gb:.0f} GB"),
         ("HNSW index per department partition", f"~{s.hnsw_gb_per_department:.1f} GB"),

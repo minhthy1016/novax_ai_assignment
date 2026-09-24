@@ -21,7 +21,7 @@ def test_sizing_follows_from_its_inputs() -> None:
     base = size()
     # Twice the document length is twice the chunks and index, nothing else moves.
     longer = size(Inputs(avg_document_tokens=5_000))
-    assert round(longer.children / base.children, 6) == 2.0
+    assert round(longer.chunks / base.chunks, 6) == 2.0
     assert longer.gpus == base.gpus
     # The ceiling is Little's law: in-flight requests / seconds per answer.
     assert base.answers_per_s_at_ceiling == 100 / base.answer_seconds
