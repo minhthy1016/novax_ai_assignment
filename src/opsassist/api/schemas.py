@@ -213,6 +213,15 @@ class TicketOut(BaseModel):
     raised_at: datetime
 
 
+class EscalationOut(BaseModel):
+    """A first answer showed a warning sign and was tried again on a larger model (D-33)."""
+
+    reason: Literal["uncited", "not_covered"]
+    first_model: str
+    model: str
+    outcome: Literal["used", "kept_first", "unavailable"]
+
+
 class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID
@@ -224,6 +233,7 @@ class ChatResponse(BaseModel):
     abstained: bool
     # Citations moved to the retrieved source that states the sentence's figures (rag.py).
     repointed_citations: int = 0
+    escalation: EscalationOut | None = None
     # None when no model was called (nothing relevant was retrieved -> abstention).
     model: ModelRef | None
     model_route: str | None

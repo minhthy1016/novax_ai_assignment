@@ -37,6 +37,7 @@ from opsassist.api.schemas import (
     ConversationUpdate,
     ConversationUsage,
     ErrorResponse,
+    EscalationOut,
     MessageOut,
     ModelRef,
     RetrievalOut,
@@ -279,6 +280,8 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         model_choice=prep.model_choice,
         params=params,
         allow_egress=request.app.state.settings.allows_egress(retrieval.max_classification),
+        escalation_model=request.app.state.settings.escalation_model,
+        principal=principal,
     )
     if result.error is not None:
         await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
@@ -312,6 +315,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         grounded=answer.grounded,
         abstained=answer.abstained,
         repointed_citations=answer.repointed_citations,
+        escalation=EscalationOut.model_validate(result.escalation) if result.escalation else None,
         model=ModelRef(id=result.model_id, provider=result.provider or "")
         if result.model_id
         else None,

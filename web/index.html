@@ -276,6 +276,11 @@ function renderChat(question, b) {
   else if (b.route === "knowledge") badges.push('<span class="chip bad">uncited</span>');
   if (b.model) badges.push(`<span class="chip">${esc(b.model.id)}</span>`);
   if (b.fallback_used) badges.push('<span class="chip warn">fallback used</span>');
+  if (b.escalation) {
+    const e = b.escalation;
+    const cls = e.outcome === "used" ? "ok" : "warn";
+    badges.push(`<span class="chip ${cls}" title="first: ${esc(e.first_model)} · reason: ${esc(e.reason)}">escalated → ${esc(e.model)} (${esc(e.outcome)})</span>`);
+  }
   if (b.tool) {
     const cls = { ok: "ok", pending: "warn", denied: "bad", error: "bad" }[b.tool.status] || "";
     badges.push(`<span class="chip ${cls}">tool: ${esc(b.tool.name)} → ${esc(b.tool.status)}</span>`);

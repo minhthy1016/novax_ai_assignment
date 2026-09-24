@@ -33,7 +33,7 @@ import json
 import re
 import statistics
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -47,6 +47,7 @@ from evaluation.judge import Judge, family_of
 CASES = ROOT / "evaluation/cases.jsonl"
 REPORTS = ROOT / "evaluation/reports"
 RUNS = ROOT / "evaluation/runs"
+ANSWERS = RUNS / "answers-latest.json"  # phase 1 output, written before judging
 
 
 @dataclass
@@ -70,6 +71,8 @@ class CaseResult:
     answer: str = ""
     error: str | None = None
     repointed_citations: int = 0  # corrected by the backend before the answer was returned
+    escalation: dict[str, Any] | None = None  # tried again on a larger model (D-33)
+    judge_inputs: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
     def passed(self) -> bool:
@@ -102,6 +105,20 @@ def token_for(api: httpx.Client, user: str, cache: dict[str, str]) -> str:
         issued = post(api, "/api/auth/dev-token", json={"user_id": user}).json()
         cache[user] = issued["access_token"]
     return cache[user]
+
+
+def post_as(
+    api: httpx.Client, user: str, tokens: dict[str, str], url: str, **kwargs: Any
+) -> httpx.Response:
+    """POST as ``user``; a 401 means the token expired during a long run, so it is issued
+    again once. (A run slowed by model swapping outlived the one-hour token.)"""
+    for _ in range(2):
+        headers = {"Authorization": f"Bearer {token_for(api, user, tokens)}"}
+        response = post(api, url, headers=headers, **kwargs)
+        if response.status_code != 401:
+            return response
+        tokens.pop(user, None)
+    return response
 
 
 def outcome_checks(case: dict[str, Any], body: dict[str, Any]) -> dict[str, tuple[bool, str]]:
@@ -171,22 +188,20 @@ def _claim_for(answer: str, number: int) -> str:
     return ""
 
 
-def run_case(
-    api: httpx.Client, case: dict[str, Any], tokens: dict[str, str], judge: Judge | None
-) -> CaseResult:
+def run_case(api: httpx.Client, case: dict[str, Any], tokens: dict[str, str]) -> CaseResult:
     result = CaseResult(
         case_id=case["case_id"],
         category=case["category"],
         prompt=case["prompt"],
         actor=case["actor_id"],
     )
-    headers = {"Authorization": f"Bearer {token_for(api, case['actor_id'], tokens)}"}
+    user = case["actor_id"]
     payload: dict[str, Any] = {"message": case["prompt"], "max_tokens": 600}
     if model := case.get("model"):
         payload["model"] = model
 
     started = time.perf_counter()
-    response = post(api, "/api/chat", json=payload, headers=headers, timeout=300)
+    response = post_as(api, user, tokens, "/api/chat", json=payload, timeout=300)
     result.latency_ms = (time.perf_counter() - started) * 1000
     if response.status_code != 200:
         body = response.json()
@@ -206,6 +221,7 @@ def run_case(
     result.answer = str(body.get("content", ""))
     usage = body.get("usage") or {}
     result.repointed_citations = int(body.get("repointed_citations") or 0)
+    result.escalation = body.get("escalation")
     result.prompt_tokens = int(usage.get("prompt_tokens", 0))
     result.completion_tokens = int(usage.get("completion_tokens", 0))
     result.cost_usd = float(usage.get("cost_usd", 0) or 0)
@@ -215,9 +231,10 @@ def run_case(
     # ---- retrieval, from the same caller's scope
     hits: list[dict[str, Any]] = []
     if case.get("expected_sources") or case.get("forbidden_sources"):
-        hits = post(
-            api, "/api/search", json={"query": case["prompt"], "top_k": 4}, headers=headers
-        ).json()["hits"]
+        found = post_as(
+            api, user, tokens, "/api/search", json={"query": case["prompt"], "top_k": 4}
+        )
+        hits = found.json().get("hits", []) if found.status_code == 200 else []
         keys = [h["doc_key"] for h in hits]
         if wanted := case.get("expected_sources"):
             rank = next((i for i, k in enumerate(keys, 1) if k in wanted), None)
@@ -251,17 +268,29 @@ def run_case(
             "cited a forbidden source",
         )
 
+    result.judge_inputs = {"hits": hits, "body": body}
+    return result
+
+
+def _public(result: CaseResult) -> dict[str, Any]:
+    return {k: v for k, v in vars(result).items() if k != "judge_inputs"}
+
+
+def judge_case(result: CaseResult, case: dict[str, Any], judge: Judge) -> None:
+    """Second pass: grade the prose of one answered case. Kept apart from answering so a
+    run loads the answering models once and the judge once, instead of swapping them for
+    every case - and so a judge failure cannot lose the answers already collected."""
+    hits: list[dict[str, Any]] = result.judge_inputs.get("hits", [])
+    body: dict[str, Any] = result.judge_inputs.get("body", {})
     # ---- the judge, on prose only
     # Judge only what the pipeline itself wrote from sources. A tool message, a denial and a
     # mock provider's echo are rendered by the server or by a fixture: grading them as prose
     # measures the fixture, and every "unsupported claim" it produced in the first run was one
     # of those. `judged` says so explicitly rather than leaving it to a route check.
-    judged = (
-        judge is not None
-        and result.route == "knowledge"
-        and not str(case.get("model", "")).startswith(("mock/", "demo-"))
+    judged = result.route == "knowledge" and not str(case.get("model", "")).startswith(
+        ("mock/", "demo-")
     )
-    if judged and judge is not None:
+    if judged:
         passages = [h["context"] for h in hits] or [
             c.get("snippet", "") for c in body.get("citations") or []
         ]
@@ -302,7 +331,6 @@ def run_case(
         if not case.get("reference_facts") and result.answer and not body.get("abstained"):
             judgement = judge.judge_grounding(case["prompt"], result.answer, passages)
             result.unsupported_claims += judgement.unsupported
-    return result
 
 
 # ------------------------------------------------------------------ reporting
@@ -331,6 +359,8 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
     supported = sum(f["verdict"] == "supported" for f in facts)
     contradicted = sum(f["verdict"] == "contradicted" for f in facts)
     unverified = sum(bool(f.get("unverified")) for f in facts)
+    escalated = [r for r in results if r.escalation]
+    outcomes = Counter(str(r.escalation["outcome"]) for r in escalated if r.escalation)
     judge_errors = sum(bool(f.get("error")) and not f.get("unverified") for f in facts)
     unsupported = [(r.case_id, c) for r in results for c in r.unsupported_claims]
     citations = [c for r in results for c in r.citation_support if c["supports"] is not None]
@@ -384,6 +414,8 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         f"| Judge: facts contradicted | {contradicted} |",
         f"| Judge: unsupported claims found | {len(unsupported)} |",
         f"| Judge verdicts discarded (could not quote the answer) | {unverified} |",
+        f"| Escalated to a larger model (answers · second answer used · first kept) | "
+        f"{len(escalated)} · {outcomes['used']} · {outcomes['kept_first']} |",
         f"| Citations re-pointed by the backend (answers · sources) | "
         f"{sum(r.repointed_citations > 0 for r in results)} · "
         f"{sum(r.repointed_citations for r in results)} |",
@@ -531,13 +563,20 @@ def main() -> None:
     results: list[CaseResult] = []
     with httpx.Client(base_url=args.api, timeout=300) as api:
         get(api, "/readyz")
+        if args.model:
+            cases = [case | {"model": case.get("model", args.model)} for case in cases]
         for index, case in enumerate(cases, 1):
-            if args.model:
-                case = case | {"model": case.get("model", args.model)}
-            result = run_case(api, case, tokens, judge)
+            result = run_case(api, case, tokens)
             results.append(result)
+            print(f"[{index:>2}/{len(cases)}] answered {result.case_id:<4} {case['prompt'][:52]}")
+    # Answers are on disk before any judging starts: a judge failure cannot lose them.
+    ANSWERS.parent.mkdir(parents=True, exist_ok=True)
+    ANSWERS.write_text(json.dumps([_public(r) for r in results], indent=1, default=str))
+    if judge:
+        for index, (result, case) in enumerate(zip(results, cases, strict=True), 1):
+            judge_case(result, case, judge)
             mark = "ok  " if result.passed else "FAIL"
-            print(f"[{index:>2}/{len(cases)}] {mark} {result.case_id:<4} {case['prompt'][:56]}")
+            print(f"[{index:>2}/{len(cases)}] {mark} {result.case_id}")
 
     meta = {
         "started": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
@@ -558,7 +597,7 @@ def main() -> None:
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
     (REPORTS / "evaluation.md").write_text(report)
     (RUNS / f"eval-{stamp}.json").write_text(
-        json.dumps({"meta": meta, "results": [vars(r) for r in results]}, indent=1, default=str)
+        json.dumps({"meta": meta, "results": [_public(r) for r in results]}, indent=1, default=str)
     )
     print("\n" + report)
     print(f"\nWritten: evaluation/reports/evaluation.md and evaluation/runs/eval-{stamp}.json")
