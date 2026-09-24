@@ -642,6 +642,49 @@ what the source does not mention instead of correcting the premise; and two abst
 false premises.
 Full write-up: [`analysis.md`](evaluation/reports/analysis.md).
 
+### Teaching to the test, found and removed: the harness got stronger (D-34)
+
+A review of every prompt found evaluation content inside them: the router's examples
+overlapped 10 evaluation questions, and the judge's example was the reference answer of 3
+cases. They were removed. Prompts now hold rules only, tools reach the router as skill cards
+generated from code, and the judge is three separate graders. The regimes differ, so this is
+read metric by metric rather than as a delta:
+
+| Brief's metric | D5 · judge-v1 · 71 cases · router with examples | After D-34 · judge-v2 · 73 cases · rules-only router | Reading |
+|---|---|---|---|
+| Answer correctness: cases fully correct | 63/71 (88.7%) | 64/73 (87.7%) | about the same |
+| · reference facts supported | 34/39 | 34/38 | about the same; false "contradicted" 4 → 1 is the **judge** improving, not the assistant |
+| Retrieval relevance: top-4 · MRR | 37/39 · 0.923 | 37/39 · 0.923 | identical (retrieval untouched) |
+| Citation correctness: valid | 100% | 100% | unchanged |
+| · expected source cited | 36/37 | 34/36 | slightly lower: K04 uncited this run (3B wording) |
+| · citation supports the exact claim | 35/35 | 31/35 | **not comparable**: judge-v2 is stricter on causality and scope |
+| Hallucination / abstention: phrase guards | 28/29 | 29/29 | about the same |
+| · correct abstention | 12/12 | **10/12** | lower: refusals in the model's own words (E03, X06), handled in PR #14 |
+| · unsupported claims found | 4 | 7 | **not comparable**: now checked on every answer; an upper bound |
+| Tool accuracy | 30/30 | **32/34** | **a real regression**: E07 misrouted, and T08 opened a ticket nobody asked for. The old 100% partly relied on examples that overlapped the test cases |
+| Isolation | 10/10 | 10/10 | unchanged |
+| Performance: p50 / p95 | 1.09 / 4.51 s | 1.25 / 4.39 s | about the same |
+| Efficiency: tokens per case · cost | 489 · $0 | 458 · $0 | about the same |
+
+**The system did not get better, and in two places it got worse** (tool choice, abstention).
+Those are the honest numbers for a small router that no longer sees the test. **The harness
+got clearly stronger:**
+
+**What the harness gained - the part that clearly improved:**
+
+| | Before | After |
+|---|---|---|
+| Prompts checked for overlap with the eval set | no | `test_prompt_hygiene.py` fails on any overlap; run on the old prompts it flags the router (10 cases) and the judge (3 facts) |
+| Judge agreement with hand labels, same 39 answers | 35/39 (judge-v1) | **36/39** (judge-v2 with code checks) |
+| Correct answers wrongly called "contradicted" | 3 | **1** |
+| Answer correctness, citation support and grounding | mixed in one judge call | **three separate graders**; grounding asked of every answer |
+| Grounding false positives | 31 of 31 answers flagged when first asked of every answer | **7** after a code check (text and every figure must be absent from the passages) |
+| Which prompt produced a score | not recorded | prompt hashes in every report; `judge_drift.py` + `judge_labels.jsonl` re-grade fixed answers |
+
+Details: [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md),
+[`analysis.md`](evaluation/reports/analysis.md#teaching-to-the-test-found-and-removed-d-34).
+The official D5 result above stays 63/71 under judge-v1.
+
 **The control.** The same model with no retrieval and no policy states 16% of the reference
 facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions
 the caller had no right to have answered. The point is not that it is bad at facts — it is
@@ -743,6 +786,9 @@ checkable in the code.
   it, nothing corrects it at runtime.
 - **An answer can arrive uncited** when the model writes no marker at all (E12). The console
   marks it and the eval counts it as a miss; nothing blocks it.
+- **A small router without worked examples is weaker** (D-34): a bare "Check api-prod-02."
+  can go to knowledge, and one request opened a ticket nobody asked for (T08). Write skills
+  should require an explicit request for that record; this is recorded, not yet built.
 - **The judge is not the final word**: in the final run it marked two correct answers as
   contradicted (M03, M05). Every failing case prints its answer so a reader can overrule the
   judge; scored by hand the final run is 66/71 rather than 63/71.

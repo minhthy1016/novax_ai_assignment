@@ -31,6 +31,11 @@ Chạy `scripts/demo.sh`. Script dừng trước mỗi bước, bấm Enter đ�
 | 10:30–12:00 | **6 · Cách ly** | U001 không nhận được gì, **kể cả tiêu đề** tài liệu HR. U004 có quyền thì thấy, nhưng **NIM và Claude bị bỏ qua**, vì tài liệu confidential không được rời máy. Cách ly có 2 lớp: SQL filter và Row-Level Security. | `[]`, rồi `KB-HR-002`, rồi `skipped:egress_not_permitted` |
 | 12:00–13:00 | Kết | Đánh giá 71 ca, chạy sạch tái lập được: **63/71 chấm tự động (judge-v1), 66/71 chấm tay; cách ly, tool và từ chối đều 100%**. Nếu được hỏi về prompt: đã tự phát hiện prompt router và judge bị trùng câu với bộ đánh giá, đã gỡ bỏ và đo lại (D-34, PR #15). Đề xuất mở rộng AWS có mô hình tính công suất, chưa load test. Hạn chế nói thẳng: mô hình 3B là mức sàn, chưa có SSO thật. | `docs/trinh-bay-hoi-dong.md` §4–6 |
 
+**Nếu còn thời gian, hoặc khi được hỏi về prompt (1 phút).** Mở bảng "Phát hiện: prompt bị học tủ" trong `docs/trinh-bay-hoi-dong.md` §4. Ba ý:
+1. Đã tự phát hiện ví dụ trong prompt trùng với bộ đánh giá (router 10 câu, judge 3 đáp án), và đã gỡ bỏ.
+2. Hệ thống **không** tốt lên: chọn tool 30/30 → 32/34, và một yêu cầu tạo ticket không ai yêu cầu. Đó là con số thật.
+3. **Bộ đo mạnh lên rõ:** có test chống học tủ, judge khớp nhãn tay 36/39, 3 bên chấm độc lập, mã hash prompt trong mọi báo cáo.
+
 **Mục 3, câu ví dụ của đề bài.** Chỉ dùng khi PR #15 đã merge: trên `main` hiện tại router vẫn từ chối nhầm câu này.
 
 ```bash
