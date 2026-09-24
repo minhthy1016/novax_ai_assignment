@@ -41,6 +41,7 @@ from opsassist.api.schemas import (
     MessageOut,
     ModelRef,
     RetrievalOut,
+    SuggestedActionOut,
     ToolOut,
 )
 from opsassist.auth import CurrentPrincipal, Principal
@@ -316,6 +317,9 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         abstained=answer.abstained,
         repointed_citations=answer.repointed_citations,
         escalation=EscalationOut.model_validate(result.escalation) if result.escalation else None,
+        suggested_action=SuggestedActionOut.model_validate(result.suggested_action)
+        if result.suggested_action
+        else None,
         model=ModelRef(id=result.model_id, provider=result.provider or "")
         if result.model_id
         else None,

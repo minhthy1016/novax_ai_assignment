@@ -63,6 +63,7 @@
   .muted { color: var(--muted); }
   .err { color: var(--bad); }
   .stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .suggest { margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .msg { border-bottom: 1px solid var(--line); padding: 12px 0; }
   .msg:last-child { border-bottom: none; }
@@ -320,12 +321,34 @@ function renderChat(question, b) {
         : ""}
     </details>` : "";
 
+  // A suggested action is only an offer: nothing happens until the user confirms, and the
+  // confirmation goes through POST /api/tickets, i.e. the same tool path, checks and audit.
+  const sa = b.suggested_action;
+  const suggestion = sa ? `<div class="suggest">
+      <button data-act="raise">${esc(sa.label)}</button>
+      <span class="muted">Creates <b>${esc(sa.arguments.title)}</b> (severity ${esc(sa.arguments.severity)}) with your question only.</span>
+      <div class="muted" data-out></div>
+    </div>` : "";
+
   const el = document.createElement("div");
   el.className = "card msg";
   el.innerHTML = `<div class="q">${esc(question)}</div>
     <div class="row" style="margin-top:6px">${badges.join(" ")}</div>
     <div class="answer">${esc(b.content)}</div>
-    ${cites}${stats}${attempts}${tool}`;
+    ${cites}${suggestion}${stats}${attempts}${tool}`;
+  if (sa) {
+    const button = el.querySelector('[data-act="raise"]');
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      const r = await api("POST", "/api/tickets", { body: sa.arguments });
+      const out = el.querySelector("[data-out]");
+      const t = r.payload || {};
+      out.textContent = r.ok && t.status === "ok"
+        ? `Ticket ${t.data.ticket_id} raised${t.data.duplicate ? " (already open)" : ""}.`
+        : `Not raised: ${t.message || problem(r)}`;
+      if (!(r.ok && t.status === "ok")) button.disabled = false;
+    });
+  }
   $("chatlog").prepend(el);
 }
 

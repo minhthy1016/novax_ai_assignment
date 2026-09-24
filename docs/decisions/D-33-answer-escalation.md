@@ -29,6 +29,13 @@ show a warning sign, and let the user help when no model can.
    `kb:write:<dept>`, they can upload the document for *their own* departments; otherwise
    they can ask their department's document owner. The hint never names documents or
    departments the caller cannot see.
+   **A missing document becomes someone's task.** If the caller holds `ticket:create`, the
+   response also carries a `suggested_action`: a knowledge-gap ticket for the document
+   owner, containing only the caller's own question and department, with nothing
+   retrieved. It is an offer, never created automatically. The console asks the caller to
+   confirm, and the confirmation calls `POST /api/tickets`, which runs the same
+   `create_support_ticket` tool: the same argument limits, permission check, idempotency
+   (confirming twice gives one ticket) and audit record as a ticket raised in chat.
 5. **Escalations are recorded:** the API response carries `escalation` (reason, first model,
    second model, outcome), the console shows it, and the eval report counts it. In
    production, the answers that escalate repeatedly become new eval cases. The judge stays
@@ -87,6 +94,9 @@ frozen D5 report is unchanged.
 - **The "not covered" signal is a phrase list.** It catches the partial-answer caveats seen
   in the suite, and legitimate partial answers too (K18). Those are escalated and re-answered
   at a small cost.
+- **The knowledge-gap ticket has no routing to a named owner.** Tickets have no assignee
+  today; the ticket is visible to the caller's department, which is where a document owner
+  would pick it up.
 - **Premise correction (M01, M04) is not addressed.** It is a behaviour change to decide
   with the team lead, not a model-size problem.
 

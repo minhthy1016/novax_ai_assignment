@@ -61,6 +61,9 @@ class AnswerResult:
     # Set when the first answer showed a runtime warning sign (D-33): why, which model was
     # asked next, and whether its answer was used, the first was kept, or the user was asked.
     escalation: dict[str, Any] | None = None
+    # When nothing citable was found: a ticket the caller can raise for the document owner.
+    # Offered, never created here - the caller confirms, and it runs through the tool path.
+    suggested_action: dict[str, Any] | None = None
 
 
 def small_talk(message: str) -> bool:
@@ -154,8 +157,46 @@ def clarify_hint(principal: Principal | None) -> str:
     )
 
 
+def knowledge_gap_ticket(question: str, principal: Principal | None) -> dict[str, Any] | None:
+    """A support ticket the caller may raise when no model could answer, so a missing
+    document becomes someone's task instead of a dead end.
+
+    It carries only the caller's own question: nothing retrieved, nothing from another
+    department. It is offered only to callers who may raise tickets, and it is only a
+    suggestion - the console asks the caller to confirm, and ``POST /api/tickets`` runs it
+    through the same validation, permission check and audit as any tool call.
+    """
+    if principal is None or not principal.has("ticket:create"):
+        return None
+    asked = " ".join(question.split())
+    return {
+        "tool": "create_support_ticket",
+        "label": "Raise a ticket for the document owner",
+        "arguments": {
+            "title": f"Knowledge gap: {asked[:150]}",
+            "severity": "low",
+            "details": (
+                "The assistant could not answer this from the documents approved for "
+                f"{principal.department}. Please publish a document that covers it, or reply "
+                f"with where it is documented.\n\nQuestion: {asked[:3000]}"
+            ),
+        },
+    }
+
+
 def _clarifying_abstention(principal: Principal | None) -> GroundedAnswer:
-    return GroundedAnswer(ABSTAIN + clarify_hint(principal), [], True, 0)
+    hint = clarify_hint(principal)
+    if principal is not None and principal.has("ticket:create"):
+        hint += " You can also raise a ticket for the document owner."
+    return GroundedAnswer(ABSTAIN + hint, [], True, 0)
+
+
+def _with_gap_ticket(
+    result: AnswerResult, question: str, principal: Principal | None
+) -> AnswerResult:
+    if result.answer.abstained:
+        result.suggested_action = knowledge_gap_ticket(question, principal)
+    return result
 
 
 async def answer_from_knowledge(
@@ -178,7 +219,10 @@ async def answer_from_knowledge(
     """
     if not retrieval.chunks:
         answer = _clarifying_abstention(principal)
-        return AnswerResult(text=answer.text, answer=answer, retrieval=retrieval, route="knowledge")
+        empty = AnswerResult(
+            text=answer.text, answer=answer, retrieval=retrieval, route="knowledge"
+        )
+        return _with_gap_ticket(empty, question, principal)
     messages = build_messages(question, retrieval.chunks, history)
     try:
         outcome = await gateway.chat(model_choice, messages, params, ctx, allow_egress=allow_egress)
@@ -191,7 +235,7 @@ async def answer_from_knowledge(
 
     reason = escalation_reason(answer, bool(retrieval.chunks))
     if reason is None or not escalation_model or escalation_model == outcome.model.id:
-        return result
+        return _with_gap_ticket(result, question, principal)
     escalation: dict[str, Any] = {
         "reason": reason,
         "first_model": outcome.model.id,

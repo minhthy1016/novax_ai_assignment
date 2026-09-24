@@ -13,11 +13,35 @@ from typing import Any
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import or_, select
 
-from opsassist.api.schemas import TicketOut
+from opsassist.api.common import request_id_of
+from opsassist.api.schemas import CreateTicketRequest, TicketOut, ToolOut
 from opsassist.auth import CurrentPrincipal
 from opsassist.db.models import Ticket, User
+from opsassist.tools import executor
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
+
+
+@router.post("", response_model=ToolOut)
+async def raise_ticket(
+    request: Request, body: CreateTicketRequest, principal: CurrentPrincipal
+) -> Any:
+    """Raise a ticket the caller confirmed, e.g. a suggested knowledge-gap ticket.
+
+    Not a second way to write tickets: it calls the same `create_support_ticket` tool with
+    the same argument validation, `ticket:create` check, idempotency and audit record as a
+    ticket raised in chat, so the two paths cannot drift apart.
+    """
+    ctx = executor.ToolContext(
+        request_id=request_id_of(request),
+        factory=request.app.state.session_factory,
+        gateway=request.app.state.gateway,
+        settings=request.app.state.settings,
+    )
+    outcome = await executor.run_tool(principal, "create_support_ticket", body.model_dump(), ctx)
+    return ToolOut(
+        name=outcome.tool, status=outcome.status, message=outcome.message, data=outcome.data
+    )
 
 
 @router.get("", response_model=list[TicketOut])

@@ -199,3 +199,48 @@ def test_the_second_call_obeys_the_same_egress_rule() -> None:
     gateway = FakeGateway({"small": "Answer.", "large": "Answer [1]."})
     run(gateway, [chunk()], allow_egress=False)
     assert gateway.calls == [("small", False), ("large", False)]
+
+
+# ------------------------------------------------------------------ knowledge-gap ticket
+
+
+def test_a_gap_ticket_carries_only_the_callers_question() -> None:
+    from opsassist.agent.service import knowledge_gap_ticket
+
+    ticket = knowledge_gap_ticket(
+        "  What is the  parental leave policy? ", principal("ticket:create", "docs:hr")
+    )
+    assert ticket is not None and ticket["tool"] == "create_support_ticket"
+    args = ticket["arguments"]
+    assert args["title"] == "Knowledge gap: What is the parental leave policy?"
+    assert args["severity"] == "low"
+    assert args["details"].endswith("Question: What is the parental leave policy?")
+    assert "engineering" in args["details"]  # the caller's own department, nothing else
+
+
+@pytest.mark.security
+def test_no_gap_ticket_is_offered_without_ticket_create() -> None:
+    from opsassist.agent.service import knowledge_gap_ticket
+
+    assert knowledge_gap_ticket("Anything?", principal("docs:engineering")) is None
+    assert knowledge_gap_ticket("Anything?", None) is None
+
+
+def test_a_long_question_still_makes_a_valid_ticket() -> None:
+    from opsassist.agent.service import knowledge_gap_ticket
+    from opsassist.tools.registry import CreateSupportTicketArgs
+
+    ticket = knowledge_gap_ticket("why " * 2000, principal("ticket:create"))
+    assert ticket is not None
+    CreateSupportTicketArgs.model_validate(ticket["arguments"])  # the tool's own limits
+
+
+def test_abstentions_offer_a_ticket_and_answers_do_not() -> None:
+    who = principal("ticket:create", "docs:engineering")
+    declined = run(FakeGateway({"small": ABSTAIN}), [chunk()], principal=who)
+    assert declined.suggested_action is not None
+    assert "raise a ticket for the document owner" in declined.text
+    nothing = run(FakeGateway({}), [], principal=who)
+    assert nothing.suggested_action is not None
+    answered = run(FakeGateway({"small": "One server at a time [1]."}), [chunk()], principal=who)
+    assert answered.suggested_action is None

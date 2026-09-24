@@ -462,6 +462,11 @@ curl -s -X PATCH localhost:8000/api/conversations/<id> -H "$AUTH" \
 curl -N localhost:8000/api/chat/stream -H "$AUTH" -H 'content-type: application/json' \
   -d '{"message":"When may we deploy to production?","model":"ollama/llama3.2-3b"}'
 
+# When nothing citable is found, the answer offers a knowledge-gap ticket (D-33);
+# raising it is a separate, explicit call through the same create_support_ticket tool
+curl -s localhost:8000/api/tickets -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"title":"Knowledge gap: pet policy","severity":"low","details":"Question: may we bring pets?"}'
+
 # Retrieval only, scoped to the caller
 curl -s localhost:8000/api/search -H "$AUTH" -H 'content-type: application/json' \
   -d '{"query":"payment incident root cause"}' | jq '.hits[] | {ref, similarity}'
