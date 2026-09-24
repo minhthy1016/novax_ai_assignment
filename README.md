@@ -558,7 +558,7 @@ names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
 
 | File | What is in it | Used by |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **71 evaluation cases** — the answering suite. One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **73 evaluation cases** — the answering suite (the frozen D5 run below used the first 71; C04–C05 were added after it, for a router fix). One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) | **41 retrieval gold cases** — question plus the exact source text that answers it (`evidence`, or `evidence_terms` for facts in table cells) | `make test-eval`, `chunking_eval.py` |
 | [`evaluation/answer_eval.py`](evaluation/answer_eval.py) | the six must-abstain questions used by the fast lexical scorer | `make test-eval` |
 

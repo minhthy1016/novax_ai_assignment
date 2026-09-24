@@ -361,7 +361,7 @@ def test_the_ticket_tool_is_offered_to_the_model_with_its_purpose() -> None:
     stops 'how do I solve INC-1051' being answered from the handbook."""
     described = {t["name"]: t for t in describe_for_model()}
     assert "get_support_ticket" in described
-    assert "never in the documents" in described["get_support_ticket"]["description"]
+    assert any("never in the documents" in w for w in described["get_support_ticket"]["use_when"])
 
 
 def test_a_ticket_keeps_the_requesters_own_words() -> None:
