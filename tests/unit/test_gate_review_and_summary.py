@@ -103,7 +103,7 @@ async def test_admitted_near_misses_become_the_context() -> None:
     out = await review(judge, gated(chunk("KB-A"), chunk("KB-B")))
     assert [c.doc_key for c in out.chunks] == ["KB-B"]
     assert (out.reviewed, out.admitted_by_review) == (2, 1)
-    assert judge.calls[0]["route"] == "ollama/llama3.2-3b"  # the fast local router model
+    assert judge.calls[0]["route"] == Settings(env="test").router_model  # the fast router
 
 
 async def test_nothing_admitted_or_no_judge_keeps_the_abstention() -> None:
