@@ -314,6 +314,18 @@ def test_partial_answer_is_not_an_abstention() -> None:
     assert finalize("Sorry - I couldn't find this in the approved knowledge.", []).abstained
 
 
+def test_an_abstention_in_the_model_s_own_words_is_recognised() -> None:
+    # Eval case E03: shown as an uncited answer instead of a refusal until this was caught.
+    worded = "I couldn't find any information on HR compensation review notes in the sources."
+    answer = finalize(worded, [chunk(1, "unrelated")])
+    assert answer.abstained and answer.text == ABSTAIN
+    # A cited answer that mentions not finding one part is still an answer.
+    partial = finalize(
+        "Leave is 14 days [1]. I could not find a sick-leave policy.", [chunk(1, "14")]
+    )
+    assert not partial.abstained
+
+
 def test_uncited_answer_is_not_grounded() -> None:
     answer = finalize("The window is Tuesday.", [chunk(1, "Tuesday")])
     assert not answer.citations and not answer.grounded

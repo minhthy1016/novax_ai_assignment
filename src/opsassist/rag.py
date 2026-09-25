@@ -145,13 +145,23 @@ def gate_review_messages(question: str, chunks: list[RetrievedChunk]) -> list[Ch
     ]
 
 
+# A small model sometimes words the abstention its own way ("I couldn't find any
+# information on X in the provided sources"). Left unrecognised it is shown as an uncited
+# answer rather than a refusal, and wastes an escalation (eval case E03).
+_OWN_WORDS_ABSTENTION = re.compile(
+    r"\b(?:couldn't|could not|can't|cannot|was unable to|am unable to|unable to)\s+find\b"
+)
+
+
 def is_abstention(text: str) -> bool:
     """The fixed abstention, possibly reworded around. An answer that cites a source is not
     an abstention even if it says part of the question is not covered."""
     norm = " ".join(text.lower().split()).rstrip(".")
     if norm.startswith(ABSTAIN.lower().rstrip(".")):
         return True
-    return "couldn't find this in the approved" in norm and not _MARKER.search(text)
+    if _MARKER.search(text):
+        return False
+    return "couldn't find this in the approved" in norm or bool(_OWN_WORDS_ABSTENTION.search(norm))
 
 
 def normalize_markers(answer: str, sources: int) -> str:

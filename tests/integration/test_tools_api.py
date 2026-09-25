@@ -369,3 +369,47 @@ def test_an_unknown_ticket_is_reported_not_invented(api: httpx.Client) -> None:
     body = ask(api, "U001", "How should ticket INC-9999 be solved?")
     assert body["tool"]["status"] == "error"
     assert "no ticket" in body["tool"]["message"]
+
+
+def test_an_unanswerable_question_offers_a_ticket_the_user_can_raise(api: httpx.Client) -> None:
+    # Nothing in the corpus covers this: the answer is an abstention that offers a
+    # knowledge-gap ticket, which is only raised when the user confirms (D-33).
+    question = "What is the company parental leave policy?"  # E05: nothing retrieved
+    body = ask(api, "U001", question)
+    assert body["abstained"] and body["suggested_action"] is not None
+    suggested = body["suggested_action"]
+    assert suggested["tool"] == "create_support_ticket"
+    assert question in suggested["arguments"]["details"]
+
+    raised = api.post("/api/tickets", json=suggested["arguments"], headers=auth(api, "U001"))
+    assert raised.status_code == 200, raised.text
+    ticket = raised.json()
+    assert ticket["status"] == "ok" and ticket["data"]["ticket_id"].startswith("INC-")
+
+    # The same confirmation twice is one ticket (the tool's idempotency applies here too).
+    again = api.post("/api/tickets", json=suggested["arguments"], headers=auth(api, "U001"))
+    assert again.json()["data"]["ticket_id"] == ticket["data"]["ticket_id"]
+    assert again.json()["data"]["duplicate"] is True
+
+    mine = api.get("/api/tickets?limit=100", headers=auth(api, "U001")).json()
+    assert any(t["ticket_id"] == ticket["data"]["ticket_id"] for t in mine)
+
+
+@pytest.mark.security
+def test_raising_a_ticket_directly_uses_the_tool_s_validation(api: httpx.Client) -> None:
+    short = api.post(
+        "/api/tickets",
+        json={"title": "x", "severity": "low", "details": "too short title"},
+        headers=auth(api, "U001"),
+    )
+    assert short.status_code == 200 and short.json()["status"] == "error"
+    bad_severity = api.post(
+        "/api/tickets",
+        json={"title": "Valid title", "severity": "urgent", "details": "details here"},
+        headers=auth(api, "U001"),
+    )
+    assert bad_severity.status_code == 422
+    anonymous = api.post(
+        "/api/tickets", json={"title": "Valid title", "severity": "low", "details": "details"}
+    )
+    assert anonymous.status_code == 401

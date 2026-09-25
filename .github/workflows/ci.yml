@@ -25,6 +25,7 @@ jobs:
       OPSASSIST_INDEX_EMBEDDING_MODEL: mock/embed-768
       # No Ollama in CI: the deterministic mock stands in for the router model too.
       OPSASSIST_ROUTER_MODEL: mock/echo
+      OPSASSIST_ESCALATION_MODEL: ""  # no Ollama in CI; escalation is unit-tested (D-33)
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
