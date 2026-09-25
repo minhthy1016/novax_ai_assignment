@@ -10,9 +10,9 @@ permissions, data isolation, approvals and the audit trail are enforced in code 
 database, never by prompting the model.
 
 > **Status (day 6 of 6, review 29 September 2026):** Tasks 1-7 and the scale proposal are
-> complete and tested end to end. Evaluation of the current system: **68/73 strict, 69/73
-> read by hand** (judge-v2, no evaluation content in any prompt), with isolation 10/10 and
-> tool accuracy 34/34. The frozen D5 run, 63/71 under judge-v1, is kept as a reference; the
+> complete and tested end to end. Evaluation of the current system: **68–69/73 strict,
+> 69–70/73 read by hand across two clean runs** (judge-v2, no evaluation content in any
+> prompt), with isolation 10/10 and tool accuracy 34/34 in both. The frozen D5 run, 63/71 under judge-v1, is kept as a reference; the
 > two are different measurement regimes, not a before/after
 > ([details](#teaching-to-the-test-found-and-removed-the-harness-got-stronger-d-34)).
 > See [Current status](#current-status).
@@ -587,24 +587,27 @@ model involved. Only prose is judged by a model, and the judge is a **different 
 (Qwen judging Llama), called **outside** the pipeline, and **local**, so judging a
 confidential answer never sends it off the machine.
 
-**Headline: the current system**, measured from a clean stack under judge-v2, after evaluation
-content was removed from every prompt (D-34), with the router and write-skill fixes
-([`router-3b-run.md`](evaluation/reports/router-3b-run.md)). By hand, the one difference from
-strict is M03, a correct answer the judge calls contradicted. The failures left are two
+**Headline: the current system**, measured twice from a clean stack under judge-v2, after
+evaluation content was removed from every prompt (D-34), with the router and write-skill
+fixes: the router A/B run ([`router-3b-run.md`](evaluation/reports/router-3b-run.md), 68/73)
+and the final pre-review run ([`final-pre-review-run.md`](evaluation/reports/final-pre-review-run.md),
+69/73). The range is the honest figure: the two runs differ by one case (K18), on how the 3B
+model worded its answer. By hand, the one difference from strict is M03, a correct answer
+the judge calls contradicted. The failures left are two
 false-premise abstentions (M01, M04), a two-part question (K18) and a refusal worded in the
 model's own words (X06); PR #14 addresses the last two.
 
 ```text
-73-case evaluation — current system (judge-v2, clean stack)
+73-case evaluation — current system (judge-v2, two clean runs)
 
-Strict correctness:        68/73 (93.2%)
-Manual review:              69/73 (94.5%)
+Strict correctness:        68–69/73 (93.2–94.5%)
+Manual review:              69–70/73 (94.5–95.9%)
 
-Isolation:                  10/10
-Tool accuracy:              34/34
-Abstention:                 11/12
-Citation validity:          36/36
-Exact citation support:     31/35
+Isolation:                  10/10 in both runs
+Tool accuracy:              34/34 in both runs
+Abstention:                 11/12 in both runs
+Citation validity:          36/36 · 38/38
+Exact citation support:     31/35 · 34/38
 
 Reference - frozen D5 run (judge-v1, 71 cases): 63/71 strict, 66/71 by hand
 ```
@@ -709,8 +712,8 @@ got clearly stronger:**
 
 Details: [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md),
 [`analysis.md`](evaluation/reports/analysis.md#teaching-to-the-test-found-and-removed-d-34).
-The headline is the current system's 68/73 under judge-v2; the D5 run, 63/71 under
-judge-v1, is kept as the reference it was measured against.
+The headline is the current system's 68–69/73 across two clean runs under judge-v2; the D5
+run, 63/71 under judge-v1, is kept as the reference it was measured against.
 
 **The control.** The same model with no retrieval and no policy states 16% of the reference
 facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions

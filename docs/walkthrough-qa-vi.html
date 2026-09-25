@@ -184,10 +184,10 @@
           <td class="avoid">"Mình tin dev không commit key."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Vì sao chỉ 68/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">68/73 là hệ thống hiện tại, lấy từ một lần chạy sạch dưới judge-v2, và không prompt nào còn chứa nội dung bộ đánh giá; không chỉnh tay ca nào. Chấm tay là 69/73 (một lỗi của judge). Cách ly 10/10, chọn tool 34/34, chấm bằng luật. Các ca còn trượt: hai câu có tiền đề sai mà hệ thống từ chối (quyết định sản phẩm, đang chờ team lead), một câu hỏi hai phần, và một câu từ chối tự diễn đạt (PR #14). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
+          <td class="q">Vì sao chỉ 68–69/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">68–69/73 là hệ thống hiện tại qua hai lần chạy sạch dưới judge-v2, và không prompt nào còn chứa nội dung bộ đánh giá; không chỉnh tay ca nào. Chấm tay là 69–70/73 (một lỗi của judge). Hai lần chạy chỉ khác nhau 1 ca, do mô hình 3B diễn đạt khác đi, nên con số trung thực là một khoảng. Cách ly 10/10, chọn tool 34/34, chấm bằng luật. Các ca còn trượt: hai câu có tiền đề sai mà hệ thống từ chối (quyết định sản phẩm, đang chờ team lead), một câu hỏi hai phần, và một câu từ chối tự diễn đạt (PR #14). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
           <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
-          <td class="avoid">"Tăng từ 63 lên 68." Khác judge, khác prompt, khác bộ ca.</td>
+          <td class="avoid">"Tăng từ 63 lên 69." Hoặc đưa số của một lần chạy như thể nó chính xác tuyệt đối. Khác judge, khác prompt, khác bộ ca.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Vì sao tin được LLM judge?<span class="topic">Đánh giá</span></td>

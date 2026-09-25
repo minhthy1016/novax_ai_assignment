@@ -184,10 +184,10 @@
           <td class="avoid">"We rely on developers not to commit keys."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Why 68/73 and not higher? And what is 63/71?<span class="topic">Evaluation</span></td>
-          <td class="answer" tabindex="0">68/73 is the current system, from a clean run under judge-v2, with no evaluation content in any prompt; nothing was adjusted, and it is 69/73 by hand (one judge error). Isolation is 10/10 and tool accuracy 34/34, graded by rules. The failures left: two false-premise questions answered by abstaining (a product decision with the team lead), a two-part question and a refusal worded by the model (PR #14). 63/71 is the earlier D5 run under judge-v1: a different measurement regime, kept as a reference, not a before/after.</td>
+          <td class="q">Why 68–69/73 and not higher? And what is 63/71?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">68–69/73 is the current system across two clean runs under judge-v2, with no evaluation content in any prompt; nothing was adjusted, and it is 69–70/73 by hand (one judge error). The runs differ by one case, on how the 3B model worded an answer, so the honest figure is a range. Isolation is 10/10 and tool accuracy 34/34, graded by rules. The failures left: two false-premise questions answered by abstaining (a product decision with the team lead), a two-part question and a refusal worded by the model (PR #14). 63/71 is the earlier D5 run under judge-v1: a different measurement regime, kept as a reference, not a before/after.</td>
           <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
-          <td class="avoid">"We went from 63 to 68." Different judge, different prompts, different suite.</td>
+          <td class="avoid">"We went from 63 to 69." Or quoting a single run as if it were exact. Different judge, different prompts, different suite.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Why trust an LLM judge?<span class="topic">Evaluation</span></td>
