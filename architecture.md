@@ -129,6 +129,7 @@ reasoning stays available.
 | [D-30](docs/decisions/D-30-server-status-field-level-policy.md) | Server status: field-level policy | Security |
 | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](docs/decisions/D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
+| [D-33](docs/decisions/D-33-answer-escalation.md) | Answer escalation: retry warning signs on a larger model, then ask the user | RAG |
 | [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) | Prompts hold rules; skills come from the registry; cases never enter a prompt | Agent / Evaluation |
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
 | [D-50](docs/decisions/D-50-evaluation-design.md) | Evaluation design: deterministic rules, judged prose | Evaluation |

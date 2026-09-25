@@ -19,9 +19,10 @@ from opsassist.auth import Principal
 from opsassist.config import Settings
 from opsassist.gateway.gateway import CallContext, ChatOutcome, GatewayError, LLMGateway
 from opsassist.knowledge.retrieval import RetrievalResult, retrieve
+from opsassist.knowledge.upload import writable_departments
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, Usage
-from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
+from opsassist.rag import ABSTAIN, GroundedAnswer, abstention, build_messages, finalize
 from opsassist.tools.registry import TOOLS
 
 # Only unmistakable social openers take the small-talk path; anything that looks like a
@@ -57,6 +58,12 @@ class AnswerResult:
     attempts: list[Any] = field(default_factory=list)
     error: GatewayError | None = None
     tool: dict[str, Any] | None = None
+    # Set when the first answer showed a runtime warning sign (D-33): why, which model was
+    # asked next, and whether its answer was used, the first was kept, or the user was asked.
+    escalation: dict[str, Any] | None = None
+    # When nothing citable was found: a ticket the caller can raise for the document owner.
+    # Offered, never created here - the caller confirms, and it runs through the tool path.
+    suggested_action: dict[str, Any] | None = None
 
 
 def small_talk(message: str) -> bool:
@@ -94,6 +101,104 @@ async def run_retrieval(
     )
 
 
+# ------------------------------------------------------------------ escalation (D-33)
+#
+# The offline judge knows the reference answer; a live question has none. Escalation is
+# therefore triggered only by signals the backend can see in the answer itself, with no
+# model call: no citation, or a statement that the sources do not cover something.
+#
+# An abstention is NOT escalated. Measured on the 71-case suite, the larger model rescued
+# 0 of 11 abstentions (9 of them were correct refusals: another department's documents, no
+# answer in the corpus, an injection attempt) and added 4-8 s each. An abstention goes
+# straight to the user with what they can do next.
+
+_NOT_COVERED = re.compile(
+    r"\b(?:does|do|did)\s*n[o']?t\s+(?:mention|cover|specify|provide|contain|say|include)\b"
+    r"|\bnot\s+(?:specified|mentioned|covered|stated)\b"
+    r"|\bno\s+(?:information|mention)\b",
+    re.IGNORECASE,
+)
+
+
+def escalation_reason(answer: GroundedAnswer, retrieved: bool) -> str | None:
+    """Why a first answer should be tried again on a larger model, or None. Nothing retrieved
+    means nothing to answer from, and an abstention was not rescued by a larger model when
+    measured: in both cases only the user can help."""
+    if not retrieved or answer.abstained:
+        return None
+    if not answer.citations:
+        return "uncited"
+    if _NOT_COVERED.search(answer.text):
+        return "not_covered"
+    return None
+
+
+def pick_answer(first: GroundedAnswer, second: GroundedAnswer) -> str:
+    """``second`` if it is a cited answer, otherwise keep ``first``. A second answer is never
+    used just for being second; it has to clear the bar the first one missed."""
+    return "second" if second.citations and not second.abstained else "first"
+
+
+def clarify_hint(principal: Principal | None) -> str:
+    """What to do when nothing citable was found. Names only departments the caller may
+    write to; never hints at documents or departments the caller cannot see."""
+    if principal is None:
+        return ""
+    departments = sorted(writable_departments(principal))
+    if departments:
+        where = ", ".join(departments)
+        return (
+            " If this should be covered, rephrase the question with more detail, or upload "
+            f"the relevant document ({where}) from the console."
+        )
+    return (
+        " If this should be covered, rephrase the question with more detail, or ask your "
+        "department's document owner to publish it."
+    )
+
+
+def knowledge_gap_ticket(question: str, principal: Principal | None) -> dict[str, Any] | None:
+    """A support ticket the caller may raise when no model could answer, so a missing
+    document becomes someone's task instead of a dead end.
+
+    It carries only the caller's own question: nothing retrieved, nothing from another
+    department. It is offered only to callers who may raise tickets, and it is only a
+    suggestion - the console asks the caller to confirm, and ``POST /api/tickets`` runs it
+    through the same validation, permission check and audit as any tool call.
+    """
+    if principal is None or not principal.has("ticket:create"):
+        return None
+    asked = " ".join(question.split())
+    return {
+        "tool": "create_support_ticket",
+        "label": "Raise a ticket for the document owner",
+        "arguments": {
+            "title": f"Knowledge gap: {asked[:150]}",
+            "severity": "low",
+            "details": (
+                "The assistant could not answer this from the documents approved for "
+                f"{principal.department}. Please publish a document that covers it, or reply "
+                f"with where it is documented.\n\nQuestion: {asked[:3000]}"
+            ),
+        },
+    }
+
+
+def _clarifying_abstention(principal: Principal | None) -> GroundedAnswer:
+    hint = clarify_hint(principal)
+    if principal is not None and principal.has("ticket:create"):
+        hint += " You can also raise a ticket for the document owner."
+    return GroundedAnswer(ABSTAIN + hint, [], True, 0)
+
+
+def _with_gap_ticket(
+    result: AnswerResult, question: str, principal: Principal | None
+) -> AnswerResult:
+    if result.answer.abstained:
+        result.suggested_action = knowledge_gap_ticket(question, principal)
+    return result
+
+
 async def answer_from_knowledge(
     question: str,
     history: list[ChatMessage],
@@ -104,17 +209,68 @@ async def answer_from_knowledge(
     model_choice: str | None,
     params: ChatParams,
     allow_egress: bool = True,
+    escalation_model: str | None = None,
+    principal: Principal | None = None,
 ) -> AnswerResult:
-    """Grounded answer, or a fixed abstention when nothing relevant was retrieved."""
+    """Grounded answer, or an abstention that tells the caller what to do next.
+
+    With ``escalation_model`` set, a first answer that shows a warning sign is tried once
+    more on that model, with the same sources and the same egress rule (D-33).
+    """
     if not retrieval.chunks:
-        answer = abstention()
-        return AnswerResult(text=answer.text, answer=answer, retrieval=retrieval, route="knowledge")
+        answer = _clarifying_abstention(principal)
+        empty = AnswerResult(
+            text=answer.text, answer=answer, retrieval=retrieval, route="knowledge"
+        )
+        return _with_gap_ticket(empty, question, principal)
     messages = build_messages(question, retrieval.chunks, history)
     try:
         outcome = await gateway.chat(model_choice, messages, params, ctx, allow_egress=allow_egress)
     except GatewayError as err:
         return AnswerResult(text="", answer=abstention(), retrieval=retrieval, error=err)
     answer = finalize(outcome.result.content, retrieval.chunks)
+    if answer.abstained:
+        answer = _clarifying_abstention(principal)
+    result = _result(answer, retrieval, outcome)
+
+    reason = escalation_reason(answer, bool(retrieval.chunks))
+    if reason is None or not escalation_model or escalation_model == outcome.model.id:
+        return _with_gap_ticket(result, question, principal)
+    escalation: dict[str, Any] = {
+        "reason": reason,
+        "first_model": outcome.model.id,
+        "model": escalation_model,
+    }
+    try:
+        second_outcome = await gateway.chat(
+            escalation_model, messages, params, ctx, allow_egress=allow_egress
+        )
+    except GatewayError:
+        # The larger model is unavailable: the first answer stands, marked as such.
+        escalation["outcome"] = "unavailable"
+        result.escalation = escalation
+        return result
+    second = finalize(second_outcome.result.content, retrieval.chunks)
+    choice = pick_answer(answer, second)
+    escalation["outcome"] = "used" if choice == "second" else "kept_first"
+    chosen = _result(second, retrieval, second_outcome) if choice == "second" else result
+    # Both calls are paid for and both are in the audit trail, whichever answer is shown.
+    chosen.usage = Usage(
+        prompt_tokens=outcome.result.usage.prompt_tokens
+        + second_outcome.result.usage.prompt_tokens,
+        completion_tokens=outcome.result.usage.completion_tokens
+        + second_outcome.result.usage.completion_tokens,
+        estimated=outcome.result.usage.estimated or second_outcome.result.usage.estimated,
+    )
+    chosen.cost_usd = outcome.cost_usd + second_outcome.cost_usd
+    chosen.attempts = [*outcome.attempts, *second_outcome.attempts]
+    chosen.escalation = escalation
+    return chosen
+
+
+def _result(
+    answer: GroundedAnswer, retrieval: RetrievalResult, outcome: ChatOutcome
+) -> AnswerResult:
     return AnswerResult(
         text=answer.text,
         answer=answer,

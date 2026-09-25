@@ -213,6 +213,33 @@ class TicketOut(BaseModel):
     raised_at: datetime
 
 
+class EscalationOut(BaseModel):
+    """A first answer showed a warning sign and was tried again on a larger model (D-33)."""
+
+    reason: Literal["uncited", "not_covered"]
+    first_model: str
+    model: str
+    outcome: Literal["used", "kept_first", "unavailable"]
+
+
+class SuggestedActionOut(BaseModel):
+    """An action the caller may take, offered by the backend and never run without their
+    confirmation - today only a knowledge-gap ticket for the document owner (D-33)."""
+
+    tool: Literal["create_support_ticket"]
+    label: str
+    arguments: dict[str, str]
+
+
+class CreateTicketRequest(BaseModel):
+    """Raise a ticket directly (e.g. the console confirming a suggested knowledge-gap
+    ticket). Same arguments and limits as the `create_support_ticket` tool."""
+
+    title: str
+    severity: Literal["critical", "high", "medium", "low"]
+    details: str
+
+
 class ChatResponse(BaseModel):
     conversation_id: uuid.UUID
     message_id: uuid.UUID
@@ -224,6 +251,8 @@ class ChatResponse(BaseModel):
     abstained: bool
     # Citations moved to the retrieved source that states the sentence's figures (rag.py).
     repointed_citations: int = 0
+    escalation: EscalationOut | None = None
+    suggested_action: SuggestedActionOut | None = None
     # None when no model was called (nothing relevant was retrieved -> abstention).
     model: ModelRef | None
     model_route: str | None

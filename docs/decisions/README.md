@@ -35,6 +35,7 @@ Why the system is built this way. The system overview lives in
 | [D-30](D-30-server-status-field-level-policy.md) | Server status: field-level policy | Security |
 | [D-31](D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
+| [D-33](D-33-answer-escalation.md) | Answer escalation: retry warning signs on a larger model, then ask the user | RAG |
 | [D-34](D-34-prompts-hold-rules-cases-never-enter-prompts.md) | Prompts hold rules; skills come from the registry; cases never enter a prompt | Agent / Evaluation |
 | [D-40](D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
 | [D-60](D-60-scale-proposal-aws.md) | Scale proposal: 5,000 employees, 1M documents, 100 concurrent (AWS) | Scale |

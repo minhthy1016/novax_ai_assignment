@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     # every turn wait, and on timeout the assistant would silently degrade to knowledge-only).
     router_model: str | None = "ollama/llama3.2-3b"
 
+    # Answer escalation (D-33): a first answer with no citation, an abstention despite
+    # retrieved sources, or a "the sources do not cover" statement is tried once more on this
+    # larger model. Local by default; the egress rule applies to it like any other call.
+    # Empty disables escalation.
+    escalation_model: str | None = "ollama/llama3.1-8b"
+
     # Extra preference keys the deployment allows in persistent memory, comma-separated.
     # The built-in allowlist stays: a model must not decide what is worth remembering.
     memory_extra_keys: str = ""
