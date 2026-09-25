@@ -7,9 +7,10 @@ and the graph only decides *which* of them to call.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any
 
@@ -19,10 +20,19 @@ from opsassist.auth import Principal
 from opsassist.config import Settings
 from opsassist.gateway.gateway import CallContext, ChatOutcome, GatewayError, LLMGateway
 from opsassist.knowledge.retrieval import RetrievalResult, retrieve
+from opsassist.logging_setup import get_logger
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, Usage
-from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
+from opsassist.rag import (
+    GroundedAnswer,
+    abstention,
+    build_messages,
+    finalize,
+    gate_review_messages,
+)
 from opsassist.tools.registry import TOOLS
+
+log = get_logger("opsassist.agent")
 
 # Only unmistakable social openers take the small-talk path; anything that looks like a
 # question goes to the knowledge path, where an unsupported answer is impossible.
@@ -94,6 +104,66 @@ async def run_retrieval(
     )
 
 
+def admitted_passages(reply: str, offered: int) -> list[int]:
+    """1-based passage numbers the judge admitted. Anything unreadable admits nothing: the
+    safe failure is the abstention the gate would have given anyway."""
+    match = re.search(r"\{.*\}", reply, re.S)
+    try:
+        found = json.loads(match.group(0))["relevant"] if match else []
+    except (ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(found, list):
+        return []
+    numbers = {n for n in found if isinstance(n, int) and not isinstance(n, bool)}
+    return sorted(n for n in numbers if 1 <= n <= offered)
+
+
+async def review_near_misses(
+    question: str,
+    retrieval: RetrievalResult,
+    *,
+    gateway: LLMGateway,
+    settings: Settings,
+    ctx: CallContext,
+    model_choice: str | None,
+) -> RetrievalResult:
+    """When the gate admitted nothing, a judge reads the sections just under the bar and
+    decides which, if any, answer the question. Those become the context; the answering
+    model is told they were admitted on review (``build_messages(reviewed=True)``).
+
+    The near misses come from the same scoped query, so nothing outside the caller's access
+    is ever shown to the judge, and they stay on the box when they are confidential.
+    """
+    if retrieval.chunks or not retrieval.near_misses:
+        return retrieval
+    offered = retrieval.near_misses
+    rank = {"public": 0, "internal": 1, "confidential": 2}
+    most = max((c.classification for c in offered), key=lambda c: rank.get(c, 2))
+    try:
+        outcome = await gateway.chat(
+            settings.router_model or model_choice,
+            gate_review_messages(question, offered),
+            ChatParams(temperature=0.0, max_tokens=150),
+            ctx,
+            allow_egress=settings.allows_egress(most),
+        )
+        admitted = admitted_passages(outcome.result.content, len(offered))
+    except GatewayError:
+        admitted = []
+    log.info(
+        "gate_review",
+        offered=[c.doc_key for c in offered],
+        admitted=[offered[n - 1].doc_key for n in admitted],
+        user=ctx.user_id,
+    )
+    return replace(
+        retrieval,
+        chunks=[offered[n - 1] for n in admitted],
+        reviewed=len(offered),
+        admitted_by_review=len(admitted),
+    )
+
+
 async def answer_from_knowledge(
     question: str,
     history: list[ChatMessage],
@@ -109,7 +179,9 @@ async def answer_from_knowledge(
     if not retrieval.chunks:
         answer = abstention()
         return AnswerResult(text=answer.text, answer=answer, retrieval=retrieval, route="knowledge")
-    messages = build_messages(question, retrieval.chunks, history)
+    messages = build_messages(
+        question, retrieval.chunks, history, reviewed=retrieval.admitted_by_review > 0
+    )
     try:
         outcome = await gateway.chat(model_choice, messages, params, ctx, allow_egress=allow_egress)
     except GatewayError as err:

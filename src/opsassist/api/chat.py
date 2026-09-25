@@ -20,6 +20,7 @@ from opsassist.agent.service import (
     answer_from_knowledge,
     conversation_thread,
     describe_tool_result,
+    review_near_misses,
 )
 from opsassist.api.common import (
     GATEWAY_STATUS,
@@ -49,7 +50,6 @@ from opsassist.conversations import (
     add_message,
     get_or_create,
     get_owned,
-    history_window,
     usage_totals,
 )
 from opsassist.db.models import Conversation, Message
@@ -64,7 +64,7 @@ from opsassist.gateway.gateway import (
 )
 from opsassist.knowledge.retrieval import RetrievalResult, retrieve
 from opsassist.logging_setup import get_logger
-from opsassist.memory import update_summary
+from opsassist.memory import load_conversation_memory, update_summary
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, StreamDelta, Usage
 from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
@@ -110,9 +110,10 @@ async def _prepare(request: Request, principal_id: str, body: ChatRequest) -> Pr
         if body.model is not None:
             conv.model_id = body.model
         choice = body.model or _stored_choice(gateway, settings, conv.model_id)
-        history = await history_window(
-            session, conv.id, settings.history_max_messages, settings.history_token_budget
+        memory = await load_conversation_memory(
+            session, conv, settings.history_max_messages, settings.history_token_budget
         )
+        history = memory.as_messages()
         user_msg = await add_message(
             session, conv.id, "user", body.message, request_id=request_id_of(request)
         )
@@ -120,16 +121,25 @@ async def _prepare(request: Request, principal_id: str, body: ChatRequest) -> Pr
 
 
 async def _retrieve(
-    request: Request, principal: Principal, question: str, ctx: CallContext
+    request: Request, principal: Principal, prep: Prepared, ctx: CallContext
 ) -> RetrievalResult:
-    """Retrieval for the caller's access scope. Scope comes from database permissions only."""
-    return await retrieve(
-        question,
+    """Retrieval for the caller's access scope (database permissions only), with the near
+    misses reviewed by a judge when the relevance gate admitted nothing."""
+    found = await retrieve(
+        prep.question,
         scope_for(principal),
         factory=request.app.state.session_factory,
         gateway=request.app.state.gateway,
         settings=request.app.state.settings,
         ctx=ctx,
+    )
+    return await review_near_misses(
+        prep.question,
+        found,
+        gateway=request.app.state.gateway,
+        settings=request.app.state.settings,
+        ctx=ctx,
+        model_choice=prep.model_choice,
     )
 
 
@@ -138,6 +148,8 @@ def _retrieval_out(r: RetrievalResult) -> RetrievalOut:
         candidates=r.candidates,
         used=len(r.chunks),
         below_threshold=r.below_threshold,
+        reviewed=r.reviewed,
+        admitted_by_review=r.admitted_by_review,
         latency_ms=r.latency_ms,
         embedding_model=r.embedding_model,
     )
@@ -259,7 +271,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
 
     # ---------------------------------------------------------------- knowledge path
     try:
-        retrieval = await _retrieve(request, principal, prep.question, ctx)
+        retrieval = await _retrieve(request, principal, prep, ctx)
     except GatewayError as err:
         await _save_assistant(request, conv_id, "", status="error", model_id=None, usage=None)
         return error_response(
@@ -459,7 +471,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
         )
         try:
             try:
-                retrieval = await _retrieve(request, principal, prep.question, ctx)
+                retrieval = await _retrieve(request, principal, prep, ctx)
             except GatewayError:
                 finished = True
                 await _save_assistant(
@@ -500,7 +512,12 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                     },
                 )
                 return
-            messages = build_messages(prep.question, retrieval.chunks, prep.history)
+            messages = build_messages(
+                prep.question,
+                retrieval.chunks,
+                prep.history,
+                reviewed=retrieval.admitted_by_review > 0,
+            )
             stream_events = gateway.stream_chat(
                 prep.model_choice,
                 messages,
