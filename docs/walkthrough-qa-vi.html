@@ -1,0 +1,262 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Câu hỏi review OpsAssist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F5F6F8; --surface: #FFFFFF; --ink: #18202C; --muted: #5A6474;
+    --rule: #DCE1E8; --accent: #2E5A87; --accent-soft: #E6EDF5;
+    --avoid: #A8402B; --avoid-soft: #F8E9E5;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+      --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+      --avoid: #E28D78; --avoid-soft: #2E1E1A; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+    --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+    --avoid: #E28D78; --avoid-soft: #2E1E1A; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  .page { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; }
+  header { display: grid; gap: 10px; margin-bottom: 26px; }
+  .eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; font-weight: 600; text-wrap: balance; }
+  .lede { margin: 0; max-width: 68ch; color: var(--muted); }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 14px; }
+  .chip, .toggle {
+    font: 500 13px/1 var(--sans); padding: 8px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .toggle { margin-left: auto; border-style: dashed; }
+  .toggle[aria-pressed="true"] { border-style: solid; border-color: var(--accent); color: var(--accent); }
+  .chip:focus-visible, .toggle:focus-visible, td.answer:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .count { font: 400 13px/1 var(--mono); color: var(--muted); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+       color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--rule); background: var(--surface); position: sticky; top: env(safe-area-inset-top, 0px); }
+  td { vertical-align: top; padding: 14px; border-bottom: 1px solid var(--rule); }
+  tr:last-child td { border-bottom: 0; }
+  td.q { width: 26%; font-weight: 600; }
+  td.q .topic { display: block; margin-top: 6px; font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  td.answer { width: 38%; }
+  td.evidence { width: 18%; font: 400 12.5px/1.5 var(--mono); color: var(--muted); }
+  td.evidence code { color: var(--ink); font-family: var(--mono); }
+  td.avoid { width: 18%; font-size: 13.5px; color: var(--avoid); background: var(--avoid-soft); }
+  td.avoid::before { content: "Đừng nói"; display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; opacity: .8; }
+  .rehearse td.answer:not(.shown) { filter: blur(5px); cursor: pointer; user-select: none; }
+  .rehearse td.answer:not(.shown)::after { content: ""; }
+  tr[hidden] { display: none; }
+  .notes { margin-top: 26px; display: grid; gap: 8px; max-width: 76ch; color: var(--muted); font-size: 14px; }
+  .notes h2 { margin: 0; font-size: 15px; color: var(--ink); }
+  .notes p { margin: 0; }
+  @media (max-width: 760px) {
+    .table-wrap { border: 0; background: none; overflow: visible; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tr { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+    td { width: 100% !important; border-bottom: 1px solid var(--rule); }
+    td.evidence::before { content: "Chỉ vào"; display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; }
+    .toggle { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <header>
+    <span class="eyebrow">Review · Thứ Ba 29/09/2026</span>
+    <h1>Câu hỏi hội đồng dễ hỏi</h1>
+    <p class="lede">20 câu hỏi, mỗi câu kèm câu trả lời ngắn để nói, bằng chứng để chỉ vào, và cách nói cần tránh. Đề bài yêu cầu ứng viên <b>hiểu và bảo vệ được mọi quyết định thiết kế</b> và <b>ghi rõ trung thực những phần chưa hoàn thiện</b>, nên câu trả lời nào cũng kết thúc bằng một thứ cho xem được.</p>
+  </header>
+
+  <div class="controls" role="toolbar" aria-label="Lọc theo chủ đề">
+    <button class="chip" id="t-all" data-topic="all" aria-pressed="true">Tất cả</button>
+    <button class="chip" id="t-arch" data-topic="arch" aria-pressed="false">Kiến trúc</button>
+    <button class="chip" id="t-rag" data-topic="rag" aria-pressed="false">RAG</button>
+    <button class="chip" id="t-tools" data-topic="tools" aria-pressed="false">Tool &amp; phê duyệt</button>
+    <button class="chip" id="t-sec" data-topic="sec" aria-pressed="false">Bảo mật</button>
+    <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Đánh giá</button>
+    <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Mở rộng</button>
+    <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Hạn chế</button>
+    <span class="count" id="count" aria-live="polite">20 câu hỏi</span>
+    <button class="toggle" id="rehearse" aria-pressed="false">Luyện tập: ẩn câu trả lời</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="qa">
+      <thead>
+        <tr><th scope="col">Câu hỏi</th><th scope="col">Nói gì</th><th scope="col">Chỉ vào</th><th scope="col">Tránh</th></tr>
+      </thead>
+      <tbody>
+        <tr data-topic="arch">
+          <td class="q">Vì sao dùng pgvector trong Postgres mà không dùng vector database riêng?<span class="topic">Kiến trúc</span></td>
+          <td class="answer" tabindex="0">Quyền truy cập, phiên bản tài liệu và vector nằm chung một transaction, và Row-Level Security bảo vệ luôn cả bước truy xuất: code có quên lọc thì database vẫn trả về rỗng. Ở mức 1 triệu tài liệu, index khoảng 84 GB; chia theo phòng ban thì mỗi phần khoảng 8,4 GB, vừa với bộ nhớ. Vector database riêng là bước hai, và cái giá được nói rõ: cách ly sẽ không còn nằm trong database.</td>
+          <td class="evidence"><code>D-01</code>, <code>D-22</code>, bảng số liệu trong <code>D-60</code>; <code>make capacity</code></td>
+          <td class="avoid">"pgvector nhanh hơn." Lý do chọn là cách ly và transaction, không phải tốc độ.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">Vì sao dùng LangGraph? Agent có tự quyết định việc gì được phép không?<span class="topic">Kiến trúc</span></td>
+          <td class="answer" tabindex="0">LangGraph cho phép tạm dừng và chạy tiếp một cách bền vững: yêu cầu VPN chờ người thứ hai duyệt, kể cả qua restart, nhờ <code>interrupt()</code> và checkpoint lưu trong Postgres. Đồ thị chỉ chọn đường đi. Chính sách, schema tool, hành động chờ duyệt và audit nằm ngoài đồ thị, và được unit test mà không cần đồ thị.</td>
+          <td class="evidence"><code>D-26</code>; <code>agent/graph.py</code>, <code>agent/service.py</code></td>
+          <td class="avoid">"Agent xử lý phân quyền." Agent không bao giờ làm việc đó.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">Vì sao tự viết gateway mà không dùng LiteLLM?<span class="topic">Kiến trúc</span></td>
+          <td class="answer" tabindex="0">Những hành vi mình phải bảo vệ nằm ở đó: retry có backoff, chuỗi fallback, circuit breaker cho từng mô hình, quy tắc dữ liệu ra ngoài theo mức bảo mật, và một dòng ghi usage cho mỗi lần gọi. Tự làm thì những quy tắc này test được và giải thích được. Các provider là adapter sau cùng một interface: NIM, Ollama, Claude và một mock tất định.</td>
+          <td class="evidence"><code>D-10</code>, <code>D-11</code>, <code>D-14</code>, <code>D-15</code>; bước demo 5</td>
+          <td class="avoid">"LiteLLM không tốt." Đây là đánh đổi về phạm vi và khả năng kiểm soát, không phải chê công cụ.</td>
+        </tr>
+        <tr data-topic="arch">
+          <td class="q">Provider lỗi giữa lúc đang stream câu trả lời thì sao?<span class="topic">Kiến trúc</span></td>
+          <td class="answer" tabindex="0">Chỉ fallback khi chưa có token nào được gửi đi. Sau đó mà đổi mô hình thì sẽ ghép hai câu trả lời vào nhau, nên stream kết thúc bằng một lỗi có kiểm soát, kèm request id và không lộ lỗi gốc của provider.</td>
+          <td class="evidence"><code>D-13</code>; luồng stream trong <code>api/chat.py</code></td>
+          <td class="avoid">"Nó tự chuyển sang mô hình khác một cách liền mạch."</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">Chọn kích thước chunk và overlap thế nào?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Bằng đo đạc. Cách chia parent–child (khớp một đoạn ~64 token, đưa cả mục ≤256 token cho mô hình) được so với chia theo trang, cửa sổ cố định, theo cấu trúc và Docling, trên 41 câu hỏi vàng. Cái lợi đến từ việc giữ tiêu đề mục; kích thước chunk ít ảnh hưởng (Hit@1 lai 0,878–0,927 với 32–128 token, khoảng tin cậy chồng nhau). Production dùng 64: Hit@1 0,927, MRR 0,963.</td>
+          <td class="evidence"><code>D-20</code>; <code>evaluation/reports/chunking.md</code></td>
+          <td class="avoid">"512 token là chuẩn ngành."</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">Vì sao dùng nomic-embed-text mà không dùng mô hình embedding mạnh hơn?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Đã đo so với NVIDIA nemotron-3-embed-1b trên 40 câu hỏi vàng, loại tài liệu confidential ra để không gửi dữ liệu mật ra ngoài. Chỉ tìm bằng vector thì nemotron tốt hơn (0,950 so với 0,825), nhưng ở chế độ lai mà production dùng thì hai bên bằng nhau (Hit@1 0,925). Nomic chạy local, không gửi dữ liệu ra ngoài, nhanh hơn và rẻ hơn.</td>
+          <td class="evidence">Thí nghiệm trong PR #13 (đã đóng: giữ quyết định cũ); <code>D-20</code></td>
+          <td class="avoid">"Chưa từng so sánh." Đã so sánh: ở chỗ quan trọng thì không có khác biệt.</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">Làm sao biết trích dẫn không bị bịa?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Ba lớp kiểm tra bằng code. Trích dẫn phải trỏ tới nguồn đã được truy xuất cho chính người hỏi. Nếu mục được trích không chứa con số trong câu, trích dẫn được chuyển sang nguồn đã truy xuất có con số đó, và response ghi lại số lần chuyển. Câu trả lời không có trích dẫn bị gắn nhãn và tính là trượt. Judge chấm từng trích dẫn: 35/35 hỗ trợ đúng câu văn.</td>
+          <td class="evidence"><code>rag.py</code> (<code>finalize</code>, <code>repoint_citations</code>); <code>D-20</code></td>
+          <td class="avoid">"Mô hình luôn trích dẫn đúng." Không phải vậy; backend kiểm tra nó.</td>
+        </tr>
+        <tr data-topic="rag">
+          <td class="q">Khi thay một tài liệu thì chuyện gì xảy ra?<span class="topic">RAG</span></td>
+          <td class="answer" tabindex="0">Nội dung không đổi (hash giống) thì không làm gì. Phiên bản mới được index xong mới thay vào trong một bước, nên không bao giờ có hai bản cùng hoạt động. Job nạp lỗi thì retry, rồi vào dead-letter queue, và bản cũ vẫn giữ nguyên.</td>
+          <td class="evidence"><code>D-23</code>, <code>D-24</code>; <code>knowledge/ingest.py</code></td>
+          <td class="avoid">"Xoá rồi thêm lại." Làm vậy sẽ có lúc tài liệu biến mất.</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">Mô hình có tự tạo VPN được không?<span class="topic">Tool &amp; phê duyệt</span></td>
+          <td class="answer" tabindex="0">Không. Mô hình chỉ đề xuất. Tool nhạy cảm trở thành hành động chờ duyệt: quyền được kiểm tra, và một người khác có <code>vpn:approve</code> phải xác nhận. Lời xác nhận mang hash của đúng tham số. Hành động chạy một lần; duyệt lại thì nhận "already executed". Mọi quyết định nằm trong log audit nối chuỗi hash.</td>
+          <td class="evidence"><code>D-31</code>, <code>D-32</code>; bước demo 3; <code>/api/audit/verify</code></td>
+          <td class="avoid">"Prompt dặn nó xin phép." Phê duyệt được bắt buộc trong code.</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">Nếu router chọn sai đường hoặc sai tool thì sao?<span class="topic">Tool &amp; phê duyệt</span></td>
+          <td class="answer" tabindex="0">Router chỉ chọn đường; schema, phân quyền và phê duyệt diễn ra sau đó. Chọn nhầm "tool" thì bị từ chối hoặc phải chờ duyệt; chọn nhầm "refuse" thì assistant kém hữu ích nhưng không mất an toàn. Ví dụ thật: câu ví dụ trong đề, "…John Tan - with approval", từng bị từ chối vì router 3B khớp chữ "approval" với "skip approval". Lỗi được sửa bằng một quy tắc, không bằng ví dụ: nhắc tới phê duyệt không phải là bỏ qua phê duyệt. Sau đó mô hình còn tự bịa tham số <code>approval_needed: false</code>, và schema chặt đã từ chối ngay.</td>
+          <td class="evidence"><code>D-28</code>, <code>D-34</code>; PR #15</td>
+          <td class="avoid">"Router không thể sai."</td>
+        </tr>
+        <tr data-topic="tools">
+          <td class="q">Thực thi tool có idempotent không?<span class="topic">Tool &amp; phê duyệt</span></td>
+          <td class="answer" tabindex="0">Có, ở những chỗ cần. Yêu cầu tạo ticket lặp lại trong khoảng thời gian cho phép sẽ trả về ticket cũ. Hành động đã duyệt chỉ chạy một lần; duyệt lại bị từ chối. Kết quả tool hiển thị cho người dùng được dựng từ bản ghi đã lưu, không do mô hình tóm tắt, nên không thể bịa ra thành công.</td>
+          <td class="evidence"><code>tools/executor.py</code>; <code>test_ticket_is_created_once…</code></td>
+          <td class="avoid">"Mô hình báo kết quả." Server dựng kết quả từ dữ liệu thật.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">Cách ly phòng ban được thực thi thế nào?<span class="topic">Bảo mật</span></td>
+          <td class="answer" tabindex="0">Hai lớp nằm dưới mô hình: bộ lọc phạm vi trong câu SQL, và Row-Level Security của Postgres chạy dưới một role không phải superuser. Test từng phát hiện superuser bỏ qua được RLS, và một migration đã sửa. Tài liệu confidential nằm ở bảng riêng và chỉ đi tới mô hình local. Người phòng Engineering không nhận được gì, kể cả tiêu đề: cách ly đạt 10/10.</td>
+          <td class="evidence"><code>D-17</code>, <code>D-22</code>, <code>D-15</code>; bước demo 6</td>
+          <td class="avoid">Bất cứ câu nào nghe như "prompt dặn nó không hiện dữ liệu HR". Đề bài coi đó là không chấp nhận được.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">Chống prompt injection từ tài liệu thế nào?<span class="topic">Bảo mật</span></td>
+          <td class="answer" tabindex="0">Nội dung truy xuất là dữ liệu không đáng tin: được escape trong thẻ source và không có quyền ra lệnh. Luồng trả lời từ tài liệu không có tool nào, và lời gọi tool được phân quyền ngoài mô hình. Tài liệu độc hại vẫn được truy xuất (vì nó là nội dung hợp lệ trong kho), nhưng chỉ dẫn của nó không được làm theo, và yêu cầu "bỏ qua xác nhận" vẫn chỉ tạo hành động chờ duyệt.</td>
+          <td class="evidence"><code>D-25</code>; bước demo 4; <code>make test-security</code> (105 test)</td>
+          <td class="avoid">"Mô hình được huấn luyện để bỏ qua injection." Lớp phòng thủ không phụ thuộc vào mô hình.</td>
+        </tr>
+        <tr data-topic="sec">
+          <td class="q">Secret nằm ở đâu, có thể lộ không?<span class="topic">Bảo mật</span></td>
+          <td class="answer" tabindex="0">Secret lấy từ biến môi trường, có kiểu <code>SecretStr</code> nên không hiện trong repr hay log, và không bao giờ đưa cho mô hình. Staging và production từ chối secret JWT mặc định của dev, hoặc secret ngắn hơn 32 byte. Bộ nhớ lâu dài chặn các giá trị có dạng credential. Repo không chứa key thật.</td>
+          <td class="evidence"><code>config.py</code>; <code>D-40</code>; <code>test_config.py</code></td>
+          <td class="avoid">"Mình tin dev không commit key."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Vì sao chỉ 68–69/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">68–69/73 là hệ thống hiện tại qua hai lần chạy sạch dưới judge-v2, và không prompt nào còn chứa nội dung bộ đánh giá; không chỉnh tay ca nào. Chấm tay là 69–70/73 (một lỗi của judge). Hai lần chạy chỉ khác nhau 1 ca, do mô hình 3B diễn đạt khác đi, nên con số trung thực là một khoảng. Cách ly 10/10, chọn tool 34/34, chấm bằng luật. Các ca còn trượt: hai câu có tiền đề sai mà hệ thống từ chối (quyết định sản phẩm, đang chờ team lead), một câu hỏi hai phần, và một câu từ chối tự diễn đạt (PR #14). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
+          <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
+          <td class="avoid">"Tăng từ 63 lên 69." Hoặc đưa số của một lần chạy như thể nó chính xác tuyệt đối. Khác judge, khác prompt, khác bộ ca.</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Vì sao tin được LLM judge?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">Judge chỉ chấm câu văn; an toàn được chấm bằng luật. Có ba bên chấm cho ba câu hỏi riêng: dữ kiện chuẩn có được nêu không, trích dẫn này có hỗ trợ câu này không, và câu trả lời có nói gì ngoài nguồn không. Judge thuộc họ mô hình khác, chạy local, và phải trích nguyên văn câu trả lời. Code tự loại những gì kiểm tra được: kết luận "mâu thuẫn" mà câu trích lại nêu đúng dữ kiện, và claim "không có căn cứ" mà thật ra có trong nguồn. Judge cũng được đo với nhãn chấm tay trên cùng bộ câu trả lời: v1 đạt 35/39, v2 đạt 36/39.</td>
+          <td class="evidence"><code>evaluation/judge.py</code>, <code>judge-drift.md</code>, <code>judge_labels.jsonl</code> (PR #15)</td>
+          <td class="avoid">"Judge luôn đúng."</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Có "học tủ" prompt theo đúng bộ đánh giá của mình không?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">Có, và đã tự phát hiện ra. Ví dụ trong prompt router trùng 10 câu hỏi đánh giá, còn ví dụ của judge trùng đáp án của 3 ca. Đã gỡ bỏ, và giờ prompt chỉ còn quy tắc; tool đến router dưới dạng thẻ kỹ năng sinh từ code. Có test tự fail nếu prompt nào trùng câu chữ với câu hỏi hoặc đáp án đánh giá, hoặc nêu tên dữ liệu mẫu. Sau đó đo lại theo từng chế độ đo, không so chênh lệch điểm: trên cùng bộ câu trả lời, rubric judge mới chỉ đổi 1 kết luận. Bỏ ví dụ thì lúc đầu router yếu hơn: một yêu cầu đã tạo ra ticket mà không ai yêu cầu. Giờ code chặn mọi skill ghi dữ liệu khi yêu cầu không nhắc tới đúng loại bản ghi đó, và chọn tool trở lại 34/34 mà prompt vẫn không có ví dụ.</td>
+          <td class="evidence"><code>D-34</code>; <code>test_prompt_hygiene.py</code>; <code>rules-only-run.md</code> (PR #15)</td>
+          <td class="avoid">"Prompt của mình rất chung chung." Hãy nói đã phát hiện gì và phải trả giá gì.</td>
+        </tr>
+        <tr data-topic="scale">
+          <td class="q">Mở rộng lên 5.000 nhân viên và 1 triệu tài liệu thế nào?<span class="topic">Mở rộng</span></td>
+          <td class="answer" tabindex="0">Kiến trúc giữ nguyên; từng tầng scale riêng. Số liệu được tính từ các đầu vào ghi rõ: khoảng 47 triệu chunk; index khoảng 84 GB, chia theo phòng ban; 10 GPU L4 (4 × g6.12xlarge, dư 1 máy) ở mức trần 100 request. Mức trần cao gấp khoảng 13 lần tải trung bình, nên GPU tự scale theo hàng đợi, tối thiểu 2 máy. Dữ liệu confidential chỉ chạy trên vLLM trong VPC.</td>
+          <td class="evidence"><code>D-60</code> kèm sơ đồ AWS; <code>make capacity</code></td>
+          <td class="avoid">"Đã load test." Chưa làm; hãy nói 3 phép đo cần làm đầu tiên.</td>
+        </tr>
+        <tr data-topic="limits">
+          <td class="q">Có thêm một tuần thì làm gì?<span class="topic">Hạn chế</span></td>
+          <td class="answer" tabindex="0">Đính chính tiền đề sai thay vì từ chối (quyết định sản phẩm, cần thống nhất trước); escalate cả câu trả lời dạng stream; thay bộ phát token dev bằng OIDC; tách role database cho API và worker; chạy load test như D-60 nêu; giao ticket thiếu tài liệu cho một người phụ trách cụ thể.</td>
+          <td class="evidence">README mục "Known limitations"; <code>analysis.md</code> mục "What is still open"</td>
+          <td class="avoid">"Không có gì, đã xong."</td>
+        </tr>
+        <tr data-topic="limits">
+          <td class="q">Có dùng AI hỗ trợ không, và bảo vệ được kết quả không?<span class="topic">Hạn chế</span></td>
+          <td class="answer" tabindex="0">Có, đề bài cho phép. Mọi quyết định thiết kế được ghi lại cùng các phương án đã cân nhắc, và khi có thể thì kèm số đo mình tái hiện được ngay tại đây: <code>make eval</code>, <code>make capacity</code>, <code>scripts/demo.sh</code>. Kết quả nào không đứng vững thì báo cáo ghi rõ.</td>
+          <td class="evidence"><code>docs/decisions/</code> (35 quyết định); <code>docs/traceability.md</code></td>
+          <td class="avoid">Đưa ra con số mà không tái hiện được trực tiếp.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="notes">
+    <h2>Cách dùng</h2>
+    <p>Chế độ luyện tập làm mờ mọi câu trả lời. Hãy tự nói câu trả lời của mình trước, rồi bấm vào ô (hoặc nhấn Enter) để xem đáp án. Các nút chủ đề giúp luyện riêng từng phần. Bản tiếng Anh là <code>walkthrough-qa-en.html</code>; kịch bản demo có bấm giờ là <code>walkthrough.md</code>.</p>
+  </section>
+</div>
+
+<script>
+  (function () {
+    const rows = Array.from(document.querySelectorAll("#qa tbody tr"));
+    const chips = Array.from(document.querySelectorAll(".chip"));
+    const count = document.getElementById("count");
+    const rehearse = document.getElementById("rehearse");
+    const one = count.textContent.replace(/^\d+\s*/, "");
+    function filter(topic) {
+      let shown = 0;
+      rows.forEach((row) => {
+        const on = topic === "all" || row.dataset.topic === topic;
+        row.hidden = !on;
+        if (on) shown += 1;
+      });
+      chips.forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.topic === topic)));
+      count.textContent = shown + " " + one;
+    }
+    chips.forEach((c) => c.addEventListener("click", () => filter(c.dataset.topic)));
+    rehearse.addEventListener("click", () => {
+      const on = rehearse.getAttribute("aria-pressed") !== "true";
+      rehearse.setAttribute("aria-pressed", String(on));
+      document.body.classList.toggle("rehearse", on);
+      document.querySelectorAll("td.answer.shown").forEach((td) => td.classList.remove("shown"));
+    });
+    document.querySelectorAll("td.answer").forEach((td) => {
+      const reveal = () => { if (document.body.classList.contains("rehearse")) td.classList.toggle("shown"); };
+      td.addEventListener("click", reveal);
+      td.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); reveal(); } });
+    });
+  })();
+</script>

@@ -130,6 +130,7 @@ reasoning stays available.
 | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) | Sensitive actions: propose, confirm, execute once | Security |
 | [D-32](docs/decisions/D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
 | [D-33](docs/decisions/D-33-answer-escalation.md) | Answer escalation: retry warning signs on a larger model, then ask the user | RAG |
+| [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) | Prompts hold rules; skills come from the registry; cases never enter a prompt | Agent / Evaluation |
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
 | [D-50](docs/decisions/D-50-evaluation-design.md) | Evaluation design: deterministic rules, judged prose | Evaluation |
 | [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
@@ -172,7 +173,7 @@ Everything lives in [`evaluation/`](evaluation/); the reasoning is [D-50](docs/d
 
 | Suite | What it answers | Command |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 71 cases, one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 73 cases (the frozen D5 run used the first 71), one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
 | `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`), per-citation support ("does this passage say this sentence?") and untraceable claims - from a **different model family**, called outside the pipeline, and required to quote the answer before it may call a fact contradicted | part of `make eval` |
 | `chunking_eval.py` | 11 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) + `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |
