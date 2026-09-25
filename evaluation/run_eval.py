@@ -37,6 +37,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -414,6 +415,7 @@ def summarize(results: list[CaseResult], meta: dict[str, Any]) -> str:
         f"* wall clock: {meta['duration_s']:.0f}s",
         "* prompts (sha256, first 12): "
         + " · ".join(f"{k} `{v}`" for k, v in meta.get("prompts", {}).items()),
+        f"* suite: `{meta.get('suite', 'evaluation/cases.jsonl')}`",
         "",
         "## Headline",
         "",
@@ -550,6 +552,10 @@ def run_control(judge: Judge, cases: list[dict[str, Any]]) -> str:
 # ------------------------------------------------------------------ main
 
 
+def _short_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="http://127.0.0.1:8000")
@@ -560,9 +566,14 @@ def main() -> None:
     parser.add_argument("--no-judge", action="store_true")
     parser.add_argument("--control", action="store_true", help="also run the ungrounded baseline")
     parser.add_argument("--allow-same-family", action="store_true")
+    parser.add_argument("--cases", type=Path, default=CASES, help="suite file (JSONL)")
+    parser.add_argument(
+        "--report", default="evaluation.md", help="report file name in evaluation/reports"
+    )
     args = parser.parse_args()
 
-    cases = [json.loads(line) for line in CASES.open() if line.strip()]
+    suite = args.cases.resolve()
+    cases = [json.loads(line) for line in suite.open() if line.strip()]
     if args.categories:
         wanted = {c.strip() for c in args.categories.split(",")}
         cases = [c for c in cases if c["category"] in wanted]
@@ -606,6 +617,8 @@ def main() -> None:
         "judge_family": family_of(args.judge) if judge else "none",
         "duration_s": time.perf_counter() - started,
         "prompts": prompt_versions(),
+        # The suite is named and hashed so a score is tied to the exact cases it ran on.
+        "suite": f"{suite.relative_to(ROOT)} ({_short_hash(suite.read_text())})",
     }
     report = summarize(results, meta)
     if args.control and judge:
@@ -616,12 +629,12 @@ def main() -> None:
     REPORTS.mkdir(parents=True, exist_ok=True)
     RUNS.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
-    (REPORTS / "evaluation.md").write_text(report)
+    (REPORTS / args.report).write_text(report)
     (RUNS / f"eval-{stamp}.json").write_text(
         json.dumps({"meta": meta, "results": [_public(r) for r in results]}, indent=1, default=str)
     )
     print("\n" + report)
-    print(f"\nWritten: evaluation/reports/evaluation.md and evaluation/runs/eval-{stamp}.json")
+    print(f"\nWritten: evaluation/reports/{args.report} and evaluation/runs/eval-{stamp}.json")
 
 
 if __name__ == "__main__":

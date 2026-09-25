@@ -49,7 +49,9 @@ def _graded_texts() -> list[tuple[str, str, int]]:
     """Every question and every reference answer the system is scored on, with the run
     length that counts as copying it."""
     texts: list[tuple[str, str, int]] = []
-    for line in (ROOT / "evaluation/cases.jsonl").read_text().splitlines():
+    suites = ("evaluation/cases.jsonl", "evaluation/held_out_cases.jsonl")
+    lines = [line for s in suites for line in (ROOT / s).read_text().splitlines()]
+    for line in lines:
         case = json.loads(line)
         texts.append((case["case_id"], case["prompt"], QUESTION_RUN))
         texts += [(f"{case['case_id']} fact", f, FACT_RUN) for f in case.get("reference_facts", [])]
