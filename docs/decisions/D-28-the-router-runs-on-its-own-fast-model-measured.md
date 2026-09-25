@@ -34,3 +34,20 @@
   schemas, permission checks, the pending approval and the audit record sit outside the model
   (D-29, D-31). A false *refuse* blocks legitimate work; a false *tool* is still rejected,
   denied or held for approval. A router error can make the assistant unhelpful, never unsafe.
+- **Re-measured without examples (router A/B, 25 Sep 2026).** Once the prompt carried no
+  worked examples (D-34), a larger router was the obvious alternative, so both ran on the
+  same code, suite (73 cases) and judge-v2. Only `OPSASSIST_ROUTER_MODEL` changed:
+
+  | | `llama3.2-3b` (kept) | `llama3.1-8b` |
+  |---|---|---|
+  | Cases fully correct | **68/73** | 67/73 |
+  | Tool accuracy | 34/34 | 34/34 |
+  | Correct abstention | **11/12** | 10/12 |
+  | tool_selection | **10/10** | 9/10 (T08: ran a tool nobody asked for) |
+  | End-to-end p50 / p95 (no judge running) | **1.2 / 2.4 s** | 8.5 / 10.4 s |
+
+  The 8B router is no better on any measure and about seven times slower on this laptop
+  (partly model swapping in 16 GB, but quality alone would not justify it). **The router
+  stays on the 3B model.** Reports:
+  [`router-3b-run.md`](../../evaluation/reports/router-3b-run.md),
+  [`router-8b-run.md`](../../evaluation/reports/router-8b-run.md).

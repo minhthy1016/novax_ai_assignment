@@ -184,10 +184,10 @@
           <td class="avoid">"We rely on developers not to commit keys."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Why 63/71 and not higher?<span class="topic">Evaluation</span></td>
-          <td class="answer" tabindex="0">63/71 is the harness's own output from a clean, reproducible run under judge-v1; nothing was adjusted. Read by hand it is 66/71: three failures were grader errors. Isolation, tool accuracy and abstention are 100%, graded by rules, not a model. The five real failures come from the 3B answering model, which is the floor. An escalation to a larger model (PR #14, awaiting the team lead) measured 66/71 strict and 69/71 by hand.</td>
-          <td class="evidence"><code>evaluation/reports/evaluation.md</code>, <code>analysis.md</code>; <code>D-50</code></td>
-          <td class="avoid">"It's basically 93%." Say both numbers and why they differ.</td>
+          <td class="q">Why 68/73 and not higher? And what is 63/71?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">68/73 is the current system, from a clean run under judge-v2, with no evaluation content in any prompt; nothing was adjusted, and it is 69/73 by hand (one judge error). Isolation is 10/10 and tool accuracy 34/34, graded by rules. The failures left: two false-premise questions answered by abstaining (a product decision with the team lead), a two-part question and a refusal worded by the model (PR #14). 63/71 is the earlier D5 run under judge-v1: a different measurement regime, kept as a reference, not a before/after.</td>
+          <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
+          <td class="avoid">"We went from 63 to 68." Different judge, different prompts, different suite.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Why trust an LLM judge?<span class="topic">Evaluation</span></td>

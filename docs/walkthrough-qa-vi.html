@@ -184,10 +184,10 @@
           <td class="avoid">"Mình tin dev không commit key."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Vì sao chỉ 63/71?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">63/71 là con số do bộ đánh giá tự tính (dưới judge-v1) trên một lần chạy sạch, tái lập được; không chỉnh tay ca nào. Chấm tay là 66/71, vì 3 ca trượt là do bên chấm sai. Cách ly, tool và từ chối đều đạt 100%, và được chấm bằng luật, không dùng mô hình. 5 lỗi thật đến từ mô hình trả lời 3B, vốn là mức sàn. Escalation sang mô hình lớn hơn (PR #14, đang chờ team lead) đo được 66/71 chấm tự động và 69/71 chấm tay.</td>
-          <td class="evidence"><code>evaluation/reports/evaluation.md</code>, <code>analysis.md</code>; <code>D-50</code></td>
-          <td class="avoid">"Coi như 93%." Nói cả hai con số và vì sao chúng khác nhau.</td>
+          <td class="q">Vì sao chỉ 68/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">68/73 là hệ thống hiện tại, lấy từ một lần chạy sạch dưới judge-v2, và không prompt nào còn chứa nội dung bộ đánh giá; không chỉnh tay ca nào. Chấm tay là 69/73 (một lỗi của judge). Cách ly 10/10, chọn tool 34/34, chấm bằng luật. Các ca còn trượt: hai câu có tiền đề sai mà hệ thống từ chối (quyết định sản phẩm, đang chờ team lead), một câu hỏi hai phần, và một câu từ chối tự diễn đạt (PR #14). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
+          <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
+          <td class="avoid">"Tăng từ 63 lên 68." Khác judge, khác prompt, khác bộ ca.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Vì sao tin được LLM judge?<span class="topic">Đánh giá</span></td>

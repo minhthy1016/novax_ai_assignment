@@ -10,10 +10,11 @@ permissions, data isolation, approvals and the audit trail are enforced in code 
 database, never by prompting the model.
 
 > **Status (day 6 of 6, review 29 September 2026):** Tasks 1-7 and the scale proposal are
-> complete and tested end to end. Final D5 evaluation: **63/71 strict, 66/71 read by hand**
-> (judge-v1), with isolation, tool accuracy and abstention at 100%. After removing evaluation
-> content from every prompt (D-34), the same suite scores 68/73 under the rebuilt judge-v2 -
-> read by regime, not as a delta ([details](#teaching-to-the-test-found-and-removed-the-harness-got-stronger-d-34)).
+> complete and tested end to end. Evaluation of the current system: **68/73 strict, 69/73
+> read by hand** (judge-v2, no evaluation content in any prompt), with isolation 10/10 and
+> tool accuracy 34/34. The frozen D5 run, 63/71 under judge-v1, is kept as a reference; the
+> two are different measurement regimes, not a before/after
+> ([details](#teaching-to-the-test-found-and-removed-the-harness-got-stronger-d-34)).
 > See [Current status](#current-status).
 >
 > Three documents, three audiences: **this README** is how the system fits together ·
@@ -47,31 +48,22 @@ Expected:
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  client["Client<br/>chat UI · curl · Flowise demo"]
-  subgraph api["OpsAssist API (FastAPI)"]
-    direction LR
-    authz["Auth + Policy<br/>who you are, what you may see"]
-    agent["Orchestrator<br/>knowledge · tool · refuse"]
-    tools["Tool control<br/>schemas · approvals"]
-  end
-  kb[("Knowledge base<br/>Postgres + pgvector<br/>row-level security")]
-  ops[("Operational systems<br/>servers · tickets · VPN")]
-  llm{{"LLM gateway<br/>NIM · Claude · Ollama · mock"}}
-  audit[("Audit + metrics<br/>hash-chained log")]
-  worker["Ingestion worker<br/>parse · chunk · embed"]
+![OpsAssist architecture: client, API with auth and policy, orchestrator and tool control, ingestion worker, knowledge base, LLM gateway, operational systems, audit and metrics](docs/images/architecture.png)
 
-  client --> api
-  agent --> kb
-  tools --> ops
-  agent --> llm
-  api --> audit
-  worker --> kb
-  client -. "upload" .-> worker
-```
+**What runs today and what is the target.** Every component in the diagram exists and is
+tested in this repository. The AWS services drawn on it are where each component runs in the
+production target ([D-60](docs/decisions/D-60-scale-proposal-aws.md)). Today everything runs
+locally with Docker Compose:
 
-Everything in the diagram exists today. Two properties matter most for other teams:
+| Component | Today (this repository) | Production target on AWS (see D-60) |
+|---|---|---|
+| API and ingestion worker | containers (FastAPI; Dramatiq on Redis) | ECS Fargate; SQS |
+| Knowledge base | Postgres + pgvector container, row-level security | Aurora/RDS PostgreSQL + pgvector |
+| LLM gateway | NVIDIA NIM, Claude (off until a key is set), Ollama, mock | the same, plus vLLM in the VPC; **Bedrock is a planned fallback, not an adapter yet** |
+| Operational systems | seeded server, ticket and VPN records behind typed tools | EC2 / Systems Manager / the VPN service |
+| Audit + metrics | hash-chained audit table in Postgres; Prometheus metrics; JSON logs | the same chain archived to S3 Object Lock; CloudWatch / CloudTrail |
+
+Two properties matter most for other teams:
 
 - **Knowledge and actions share one permission model.** Retrieval and tools read the same
   access scope, built from database permissions, so a tool cannot reach what a search would
@@ -595,7 +587,29 @@ model involved. Only prose is judged by a model, and the judge is a **different 
 (Qwen judging Llama), called **outside** the pipeline, and **local**, so judging a
 confidential answer never sends it off the machine.
 
-The final D5 result is one clean, reproducible run: `main` at `7c4236f`, stack reset,
+**Headline: the current system**, measured from a clean stack under judge-v2, after evaluation
+content was removed from every prompt (D-34), with the router and write-skill fixes
+([`router-3b-run.md`](evaluation/reports/router-3b-run.md)). By hand, the one difference from
+strict is M03, a correct answer the judge calls contradicted. The failures left are two
+false-premise abstentions (M01, M04), a two-part question (K18) and a refusal worded in the
+model's own words (X06); PR #14 addresses the last two.
+
+```text
+73-case evaluation — current system (judge-v2, clean stack)
+
+Strict correctness:        68/73 (93.2%)
+Manual review:              69/73 (94.5%)
+
+Isolation:                  10/10
+Tool accuracy:              34/34
+Abstention:                 11/12
+Citation validity:          36/36
+Exact citation support:     31/35
+
+Reference - frozen D5 run (judge-v1, 71 cases): 63/71 strict, 66/71 by hand
+```
+
+**Reference: the frozen D5 result.** One clean, reproducible run: `main` at `7c4236f`, stack reset,
 image rebuilt, the sample documents re-indexed, then the full suite
 (`evaluation/runs/eval-20260923-1625.json`). The strict score is the harness's output with
 nothing adjusted; the manual score differs only by the three cases shown below as a judge
@@ -695,7 +709,8 @@ got clearly stronger:**
 
 Details: [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md),
 [`analysis.md`](evaluation/reports/analysis.md#teaching-to-the-test-found-and-removed-d-34).
-The official D5 result above stays 63/71 under judge-v1.
+The headline is the current system's 68/73 under judge-v2; the D5 run, 63/71 under
+judge-v1, is kept as the reference it was measured against.
 
 **The control.** The same model with no retrieval and no policy states 16% of the reference
 facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions
@@ -707,7 +722,7 @@ that nothing it says can be checked, and it has no notion of who is asking.
 ```bash
 make install            # local venv via uv
 make lint               # ruff + mypy (strict)
-make test               # unit tests (206), no services needed
+make test               # unit tests (207), no services needed
 make test-integration   # integration tests (63) against the running stack
 make test-security      # security tests (107): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API

@@ -69,6 +69,13 @@ kind = "chat"
 context_window = 131072
 
 [[models]]
+id = "ollama/llama3.1-8b"
+provider = "ollama"
+provider_model = "llama3.1:8b"
+kind = "chat"
+context_window = 131072
+
+[[models]]
 id = "nim/nemotron-3-embed-1b"
 provider = "nim"
 provider_model = "nvidia/nemotron-3-embed-1b"
