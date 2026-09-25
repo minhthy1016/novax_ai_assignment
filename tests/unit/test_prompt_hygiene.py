@@ -19,7 +19,7 @@ import pytest
 from evaluation.judge import CITATION_PROMPT, GROUNDING_PROMPT, JUDGE_PROMPT
 
 from opsassist.agent.graph import router_prompt
-from opsassist.rag import SYSTEM_PROMPT
+from opsassist.rag import GATE_REVIEW_PROMPT, REVIEWED_NOTE, SYSTEM_PROMPT
 
 ROOT = Path(__file__).resolve().parents[2]
 QUESTION_RUN = 5  # words; shorter runs collide with a tool's own vocabulary ("a VPN profile for")
@@ -28,6 +28,8 @@ FACT_RUN = 4  # words; reference facts and evidence are short and must never app
 PROMPTS = {
     "router (rules + skill cards)": router_prompt(),
     "answering system prompt": SYSTEM_PROMPT,
+    "answering note: sources admitted on review": REVIEWED_NOTE,
+    "gate review judge": GATE_REVIEW_PROMPT,
     "judge: facts": JUDGE_PROMPT,
     "judge: citations": CITATION_PROMPT,
     "judge: grounding": GROUNDING_PROMPT,
@@ -47,7 +49,9 @@ def _graded_texts() -> list[tuple[str, str, int]]:
     """Every question and every reference answer the system is scored on, with the run
     length that counts as copying it."""
     texts: list[tuple[str, str, int]] = []
-    for line in (ROOT / "evaluation/cases.jsonl").read_text().splitlines():
+    suites = ("evaluation/cases.jsonl", "evaluation/held_out_cases.jsonl")
+    lines = [line for s in suites for line in (ROOT / s).read_text().splitlines()]
+    for line in lines:
         case = json.loads(line)
         texts.append((case["case_id"], case["prompt"], QUESTION_RUN))
         texts += [(f"{case['case_id']} fact", f, FACT_RUN) for f in case.get("reference_facts", [])]

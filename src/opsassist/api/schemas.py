@@ -117,6 +117,8 @@ class RetrievalOut(BaseModel):
     candidates: int
     used: int
     below_threshold: int
+    reviewed: int = 0  # near misses a judge read because the gate admitted nothing
+    admitted_by_review: int = 0
     latency_ms: float
     embedding_model: str
 
