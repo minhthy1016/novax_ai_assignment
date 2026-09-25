@@ -19,7 +19,7 @@ import pytest
 from evaluation.judge import CITATION_PROMPT, GROUNDING_PROMPT, JUDGE_PROMPT
 
 from opsassist.agent.graph import router_prompt
-from opsassist.rag import SYSTEM_PROMPT
+from opsassist.rag import GATE_REVIEW_PROMPT, REVIEWED_NOTE, SYSTEM_PROMPT
 
 ROOT = Path(__file__).resolve().parents[2]
 QUESTION_RUN = 5  # words; shorter runs collide with a tool's own vocabulary ("a VPN profile for")
@@ -28,6 +28,8 @@ FACT_RUN = 4  # words; reference facts and evidence are short and must never app
 PROMPTS = {
     "router (rules + skill cards)": router_prompt(),
     "answering system prompt": SYSTEM_PROMPT,
+    "answering note: sources admitted on review": REVIEWED_NOTE,
+    "gate review judge": GATE_REVIEW_PROMPT,
     "judge: facts": JUDGE_PROMPT,
     "judge: citations": CITATION_PROMPT,
     "judge: grounding": GROUNDING_PROMPT,

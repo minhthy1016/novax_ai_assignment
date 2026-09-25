@@ -1,4 +1,4 @@
-"""Conversation persistence and the history window sent to the model.
+"""Conversation persistence. The history window sent to the model is in ``memory.py``.
 
 Ownership is enforced here, not in the route: every lookup is scoped to the caller, and
 a conversation owned by someone else is indistinguishable from one that does not exist
@@ -15,7 +15,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsassist.db.models import Conversation, LLMUsage, Message
-from opsassist.providers.base import ChatMessage, estimate_tokens
 
 
 class ConversationNotFound(LookupError):
@@ -44,38 +43,6 @@ async def get_or_create(
     session.add(conv)
     await session.flush()
     return conv
-
-
-async def history_window(
-    session: AsyncSession, conversation_id: uuid.UUID, max_messages: int, token_budget: int
-) -> list[ChatMessage]:
-    """Most recent turns that fit the budget, oldest first.
-
-    Only complete messages are replayed: a partial or failed answer would teach the model
-    a truncated reply as if it were its own.
-    """
-    if max_messages == 0 or token_budget == 0:
-        return []
-    rows = (
-        await session.scalars(
-            select(Message)
-            .where(Message.conversation_id == conversation_id, Message.status == "complete")
-            .order_by(Message.seq.desc())
-            .limit(max_messages)
-        )
-    ).all()
-    window: list[ChatMessage] = []
-    used = 0
-    for row in rows:
-        cost = estimate_tokens(row.content)
-        if used + cost > token_budget:
-            break
-        used += cost
-        window.append(
-            ChatMessage(role="user" if row.role == "user" else "assistant", content=row.content)
-        )
-    window.reverse()
-    return window
 
 
 async def add_message(
