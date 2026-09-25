@@ -17,6 +17,11 @@ from [`evaluation/capacity.py`](../../evaluation/capacity.py).
 
 ## AWS architecture
 
+![OpsAssist on AWS: Route 53, WAF and ALB in front of an ECS Fargate API and workers in a VPC, a GPU tier with vLLM, Aurora PostgreSQL with pgvector partitioned by department, S3, SQS, regional managed services, NVIDIA NIM outside the VPC for public and internal traffic only, and a second region for disaster recovery](../images/aws-scale-proposal.png)
+
+<details>
+<summary>Text version of the diagram (Mermaid)</summary>
+
 ```mermaid
 flowchart TB
   user["Employees<br/>chat UI · API clients"] --> edge["Route 53 → WAF → Application Load Balancer<br/>public subnets · 3 AZs"]
@@ -55,6 +60,8 @@ flowchart TB
   api --> s3
   region -. "replication" .-> dr
 ```
+
+</details>
 
 **A question's path:**
 1. The ALB routes the request to an API task, which checks the token and loads the caller's

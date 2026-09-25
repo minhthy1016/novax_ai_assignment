@@ -43,6 +43,7 @@ from opsassist.tools.registry import (
     TOOLS,
     asks_for_record,
     describe_for_model,
+    reads_with_invalid_arguments,
     triggered_skill,
 )
 
@@ -185,6 +186,11 @@ def build_graph(deps: AgentDeps, checkpointer: BaseCheckpointSaver[Any] | None =
             # never asks for that record - it once opened a ticket for "run a database
             # migration" (T08). Nothing is created that nobody asked for; the question is
             # answered from the documents instead, or abstains.
+            log.info("agent_route_overruled", tool=tool, user=state["user_id"], to="knowledge")
+            route, tool, args = "knowledge", None, {}
+        if route == "tool" and tool is not None and reads_with_invalid_arguments(tool, args):
+            # A read-only skill with arguments its schema rejects means the question was
+            # misread (K08): answer it from the documents instead of showing a tool error.
             log.info("agent_route_overruled", tool=tool, user=state["user_id"], to="knowledge")
             route, tool, args = "knowledge", None, {}
         log.info("agent_route", route=route, tool=tool, user=state["user_id"])

@@ -216,6 +216,21 @@ def asks_for_record(tool: str, message: str) -> bool:
     return any(word in words for word in spec.names_record)
 
 
+def reads_with_invalid_arguments(tool: str, arguments: dict[str, Any]) -> bool:
+    """A read-only skill proposed with arguments its own schema rejects: the router
+    misread the question ("How many API servers may we patch?" became a status check on a
+    server called "API servers"). Writing skills are never covered here - a malformed write
+    attempt stays visible as an error and is audited."""
+    spec = TOOLS.get(tool)
+    if spec is None or spec.effect != "reads data":
+        return False
+    try:
+        spec.args_model.model_validate(arguments)
+    except ValueError:
+        return True
+    return False
+
+
 def triggered_skill(message: str) -> tuple[str, dict[str, str]] | None:
     """The read-only skill a message names by an exact identifier (a ticket id), with that
     argument filled in - or None. Deterministic: the format lives in the skill's schema, so

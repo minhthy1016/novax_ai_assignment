@@ -151,3 +151,13 @@ def test_an_optional_argument_written_as_null_text_is_absent() -> None:
         {"employee_id": "U006", "employee_name": "null", "duration_days": "30"}
     )
     assert (args.employee_id, args.employee_name, args.duration_days) == ("U006", None, 30)
+
+
+def test_a_read_only_skill_with_invalid_arguments_is_a_misread_question() -> None:
+    # K08: "How many API servers may we patch?" became get_server_status("API servers").
+    from opsassist.tools.registry import reads_with_invalid_arguments
+
+    assert reads_with_invalid_arguments("get_server_status", {"server_id": "API servers"})
+    assert not reads_with_invalid_arguments("get_server_status", {"server_id": "web-prod-03"})
+    # A malformed write stays an error the user and the audit log both see.
+    assert not reads_with_invalid_arguments("create_vpn_profile", {"approval_needed": False})

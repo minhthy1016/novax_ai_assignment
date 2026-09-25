@@ -14,7 +14,6 @@ scripts/demo.sh --no-pause > /dev/null   # chạy một lần để nạp sẵn 
 - [ ] Ollama đang chạy và đã có `llama3.2:3b` + `nomic-embed-text`.
 - [ ] Đóng các ứng dụng nặng: máy 16 GB, mô hình cần RAM.
 - [ ] Mở sẵn: terminal cỡ chữ lớn, `README.md`, `docs/decisions/`, và file `docs/walkthrough-recording.txt` để dự phòng.
-- [ ] **Nếu PR #15 đã merge:** ở mục 3 dùng thêm câu ví dụ nguyên văn của đề bài (xem bên dưới).
 
 ## Kịch bản
 
@@ -29,19 +28,14 @@ Chạy `scripts/demo.sh`. Script dừng trước mỗi bước, bấm Enter đ�
 | 7:00–9:00 | **4 · Prompt injection** | Tài liệu độc hại **được** truy xuất, vì nó là dữ liệu hợp lệ trong kho. Nhưng nội dung truy xuất là dữ liệu không đáng tin: được escape và không có quyền ra lệnh. Nhờ tóm tắt thì chỉ phần thông tin hợp lệ được trả về, có trích dẫn. Biến thể dùng tool thì vẫn *pending*. | `UNTRUSTED TEXT…`; câu trả lời có `[1] KB-TEST-999`; `pending` |
 | 9:00–10:30 | **5 · Provider lỗi** | Retry, fallback và timeout cho từng lần gọi. Circuit breaker mở thì lần sau bỏ qua ngay. Lỗi trả ra cho client có kiểm soát, kèm request ID, **không lộ lỗi gốc của provider**. | Danh sách `attempts`; `no_available_provider` |
 | 10:30–12:00 | **6 · Cách ly** | U001 không nhận được gì, **kể cả tiêu đề** tài liệu HR. U004 có quyền thì thấy, nhưng **NIM và Claude bị bỏ qua**, vì tài liệu confidential không được rời máy. Cách ly có 2 lớp: SQL filter và Row-Level Security. | `[]`, rồi `KB-HR-002`, rồi `skipped:egress_not_permitted` |
-| 12:00–13:00 | Kết | Đánh giá 71 ca, chạy sạch tái lập được: **63/71 chấm tự động (judge-v1), 66/71 chấm tay; cách ly, tool và từ chối đều 100%**. Nếu được hỏi về prompt: đã tự phát hiện prompt router và judge bị trùng câu với bộ đánh giá, đã gỡ bỏ và đo lại (D-34, PR #15). Đề xuất mở rộng AWS có mô hình tính công suất, chưa load test. Hạn chế nói thẳng: mô hình 3B là mức sàn, chưa có SSO thật. | `docs/trinh-bay-hoi-dong.md` §4–6 |
+| 12:00–13:00 | Kết | Đánh giá 73 ca, hai lần chạy sạch: **68–69/73 chấm tự động, 69–70/73 chấm tay (judge-v2); cách ly 10/10, tool 34/34 ở cả hai lần**. Nếu hỏi vì sao là khoảng: hai lần chỉ khác 1 ca (K18), do mô hình 3B diễn đạt khác đi. Số tham khảo: D5 63/71 (judge-v1). Nếu được hỏi về prompt: đã tự phát hiện prompt router và judge bị trùng câu với bộ đánh giá, đã gỡ bỏ và đo lại (D-34, PR #15). Đề xuất mở rộng AWS có mô hình tính công suất, chưa load test. Hạn chế nói thẳng: mô hình 3B là mức sàn, chưa có SSO thật. | `docs/trinh-bay-hoi-dong.md` §4–6 |
 
 **Nếu còn thời gian, hoặc khi được hỏi về prompt (1 phút).** Mở bảng "Phát hiện: prompt bị học tủ" trong `docs/trinh-bay-hoi-dong.md` §4. Ba ý:
 1. Đã tự phát hiện ví dụ trong prompt trùng với bộ đánh giá (router 10 câu, judge 3 đáp án), và đã gỡ bỏ.
 2. Bỏ ví dụ thì lúc đầu chọn tool giảm 30/30 → 32/34, có một yêu cầu tạo ticket không ai yêu cầu. Chặn skill ghi bằng code đã đưa về **34/34** (68/73 tổng thể, cùng judge-v2), mà không cần ví dụ nào.
 3. **Bộ đo mạnh lên rõ:** có test chống học tủ, judge khớp nhãn tay 36/39, 3 bên chấm độc lập, mã hash prompt trong mọi báo cáo.
 
-**Mục 3, câu ví dụ của đề bài.** Chỉ dùng khi PR #15 đã merge: trên `main` hiện tại router vẫn từ chối nhầm câu này.
-
-```bash
-chat U005 '{"message":"Create an OpenVPN profile for employee John Tan - with approval"}' \
-  | jq '{route, status: .tool.status, message: .tool.message}'     # → tool / pending
-```
+**Mục 3 mở đầu bằng câu ví dụ nguyên văn của đề bài** ("…John Tan - with approval"): router nhận đúng và tạo đề xuất *pending*. Nếu được hỏi, nói thêm: trước D-34 câu này từng bị từ chối nhầm, và đã được sửa bằng một quy tắc chứ không bằng ví dụ.
 
 ## Nếu có sự cố
 

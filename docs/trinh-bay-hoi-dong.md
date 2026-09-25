@@ -91,40 +91,46 @@ make eval                  # bộ đánh giá 71 ca
 
 ## 4. Kết quả đánh giá
 
-71 ca kiểm thử, mỗi ca là một nhân viên hỏi một câu, trải đủ 8 nhóm đề bài yêu cầu. Lần chạy cuối được làm từ trạng thái sạch (xoá database, build lại, nạp lại tài liệu mẫu), nên tái lập được. Mô hình trả lời là `llama3.2:3b`, mô hình chấm là `qwen2.5:7b` (khác họ mô hình, chạy local).
+73 ca kiểm thử, mỗi ca là một nhân viên hỏi một câu, trải đủ 8 nhóm đề bài yêu cầu. Chạy từ trạng thái sạch (xoá database, build lại, nạp lại tài liệu mẫu), nên tái lập được. Mô hình trả lời là `llama3.2:3b`, mô hình chấm là `qwen2.5:7b` (khác họ mô hình, chạy local).
 
 **Hai cách chấm:**
 - **Bằng luật, chính xác tuyệt đối:** phân quyền, cách ly, gọi tool, từ chối.
-- **Bằng LLM judge:** chỉ chấm chất lượng câu văn.
+- **Bằng LLM judge:** chỉ chấm chất lượng câu văn, tách thành 3 bên chấm độc lập.
 
-Điểm do code tự tính, không chỉnh tay ca nào.
+Điểm do code tự tính, không chỉnh tay ca nào. **Số chính là của hệ thống hiện tại (judge-v2, prompt không còn học tủ), đo hai lần từ trạng thái sạch.** Hai lần chạy chỉ khác nhau đúng 1 ca (K18), do mô hình 3B diễn đạt khác đi, nên số được báo dạng khoảng: đó là con số trung thực. Lần chạy D5 (judge-v1) được giữ làm số tham khảo; đây là hai chế độ đo khác nhau, không phải "trước và sau".
 
 ```text
-Strict correctness:        63/71 (88.7%)
-Manual review:              66/71 (93.0%)
+73-case evaluation — current system (judge-v2, two clean runs)
 
-Isolation:                  10/10
-Tool accuracy:              30/30
-Abstention:                 12/12
-Citation validity:          36/36
-Exact citation support:     35/35
+Strict correctness:        68–69/73 (93.2–94.5%)
+Manual review:              69–70/73 (94.5–95.9%)
+
+Isolation:                  10/10 in both runs
+Tool accuracy:              34/34 in both runs
+Abstention:                 11/12 in both runs
+Citation validity:          36/36 · 38/38
+Exact citation support:     31/35 · 34/38
+
+Reference - frozen D5 run (judge-v1, 71 cases): 63/71 strict, 66/71 by hand
 ```
 
-| Tiêu chí (theo đề bài) | Kết quả |
+| Tiêu chí (theo đề bài) | Kết quả hiện tại |
 |---|---|
-| **Trả lời đúng** | 63/71 ca đúng hoàn toàn (88,7%), 66/71 khi chấm tay · dữ kiện tham chiếu được nêu đúng 34/39 (87%) |
+| **Trả lời đúng** | 68–69/73 ca đúng hoàn toàn (93,2–94,5%) qua hai lần chạy sạch, 69–70/73 khi chấm tay · dữ kiện chuẩn được nêu đúng 35/39 (90%) |
 | **Truy xuất đúng tài liệu** | nguồn đúng nằm trong top-4: 37/39 (94,9%) · MRR 0,923 |
-| **Trích dẫn đúng** | trích dẫn hợp lệ 36/36 · hỗ trợ đúng câu văn 35/35 · trích đúng tài liệu mong đợi 36/37 |
-| **Chống bịa đặt (hallucination)** | bộ lọc cụm từ cấm 28/29 (lần trượt là một câu từ chối đúng) · từ chối đúng lúc 12/12 |
-| **Gọi tool** | 30/30 (đúng tool, đúng tham số, đúng phân quyền và xác nhận) |
+| **Trích dẫn đúng** | trích dẫn hợp lệ 36/36 · 38/38 · hỗ trợ đúng câu văn 31/35 · 34/38 · trích đúng tài liệu mong đợi 35/36 · 36/36 |
+| **Chống bịa đặt (hallucination)** | bộ lọc cụm từ cấm 29/29 · từ chối đúng lúc 11/12 |
+| **Gọi tool** | 34/34 (đúng tool, đúng tham số, đúng phân quyền và xác nhận) |
 | **Cách ly phòng ban** | 10/10, không rò rỉ tài liệu nào |
-| **Hiệu năng · chi phí** | p50 1,1 s / p95 4,5 s · ~490 token mỗi ca · $0 (mô hình chạy local) |
+| **Hiệu năng · chi phí** | p50 1,2 s / p95 2,4 s · ~480 token mỗi ca · $0 (mô hình chạy local) |
+
+**Các ca còn trượt:** M01, M04 (từ chối thay vì đính chính tiền đề sai, đang chờ team lead), K18 và X06 (câu hỏi hai phần, câu từ chối tự diễn đạt; PR #14 xử lý), M03 (judge chấm nhầm).
 
 **So với cùng mô hình nhưng không có RAG:**
 
 | | Không có RAG | Có hệ thống |
 |---|---|---|
-| Dữ kiện đúng | 16% | 87% |
+| Dữ kiện đúng | 7% | 90% |
 | Trích dẫn | không có | có |
 | Câu người hỏi không có quyền hỏi | trả lời 5/5 | không trả lời |
 
@@ -163,7 +169,7 @@ Hai lần chạy khác nhau cả router, judge và số ca, nên bảng dưới 
 | Báo động nhầm "không có căn cứ" | 31/31 câu trả lời | **7**, sau khi thêm kiểm tra bằng code |
 | Biết điểm số được đo bằng prompt nào | không | có mã hash prompt trong mọi báo cáo; công cụ đo độ lệch giữa hai phiên bản judge |
 
-**Kết quả chính thức cho buổi review vẫn là 63/71 (D5, judge-v1).** Phần này trình bày như một phát hiện về tính trung thực của bộ đánh giá: tự tìm ra, tự gỡ, đo lại và công khai cái giá.
+**Số chính cho buổi review là 68–69/73 qua hai lần chạy sạch (hệ thống hiện tại, judge-v2); 63/71 (D5, judge-v1) là số tham khảo.** Phần này trình bày như một phát hiện về tính trung thực của bộ đánh giá: tự tìm ra, tự gỡ, đo lại và công khai cái giá.
 
 ---
 
