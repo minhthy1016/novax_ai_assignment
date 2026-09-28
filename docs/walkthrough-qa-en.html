@@ -77,7 +77,7 @@
   <header>
     <span class="eyebrow">Review · Tuesday 29 September 2026</span>
     <h1>Questions the panel is likely to ask</h1>
-    <p class="lede">Twenty questions with a short answer to say out loud, the evidence to point at, and the phrasing to avoid. The brief says the candidate <b>must understand and defend every submitted design decision</b> and <b>document incomplete areas honestly</b>, so every answer ends on something you can show.</p>
+    <p class="lede">Twenty-one questions with a short answer to say out loud, the evidence to point at, and the phrasing to avoid. The brief says the candidate <b>must understand and defend every submitted design decision</b> and <b>document incomplete areas honestly</b>, so every answer ends on something you can show.</p>
   </header>
 
   <div class="controls" role="toolbar" aria-label="Filter by topic">
@@ -89,7 +89,7 @@
     <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Evaluation</button>
     <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Scale</button>
     <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Limits</button>
-    <span class="count" id="count" aria-live="polite">20 questions</span>
+    <span class="count" id="count" aria-live="polite">21 questions</span>
     <button class="toggle" id="rehearse" aria-pressed="false">Rehearse: hide answers</button>
   </div>
 
@@ -184,10 +184,16 @@
           <td class="avoid">"We rely on developers not to commit keys."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Why 68–69/73 and not higher? And what is 63/71?<span class="topic">Evaluation</span></td>
-          <td class="answer" tabindex="0">68–69/73 is the current system across two clean runs under judge-v2, with no evaluation content in any prompt; nothing was adjusted, and it is 69–70/73 by hand (one judge error). The runs differ by one case, on how the 3B model worded an answer, so the honest figure is a range. Isolation is 10/10 and tool accuracy 34/34, graded by rules. The failures left: two false-premise questions answered by abstaining (a product decision with the team lead), a two-part question and a refusal worded by the model (PR #14). 63/71 is the earlier D5 run under judge-v1: a different measurement regime, kept as a reference, not a before/after.</td>
-          <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
-          <td class="avoid">"We went from 63 to 69." Or quoting a single run as if it were exact. Different judge, different prompts, different suite.</td>
+          <td class="q">Why 69/73 and not higher? And what is 63/71?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">69/73 is the median of three clean runs of the current system (70, 69, 68) under judge-v2, with no evaluation content in any prompt and nothing adjusted. One run is not a result: at temperature 0 the 3B model still words about 29 of 73 answers differently between runs. Tool accuracy 34/34, abstention 12/12 and isolation 10/10 held in every run, graded by rules. What still fails: false premises the assistant does not correct (M01, M02, M04), a product decision pending with the team lead; and a judge error (M03). 63/71 is the earlier D5 run under judge-v1: a different measurement regime, kept as a reference, not a before/after.</td>
+          <td class="evidence"><code>router-guards-run.md</code>, <code>held-out-and-three-runs.md</code>, <code>D-34</code></td>
+          <td class="avoid">"We went from 63 to 69." Or quoting the best single run. Different judge, different prompts, different suite; and one run moves by up to ±3 cases.</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Did you overfit to your own 73 cases?<span class="topic">Evaluation</span></td>
+          <td class="answer" tabindex="0">We checked it directly. After tuning, we wrote a held-out suite of 44 cases on facts and phrasings the 73 never use, and froze it in a commit before it first ran. Median over three runs: 69/73 on the tuned suite, 41/42 on the held-out cases no fix has looked at, with every rule-graded axis full on both. So there is no sign of overfitting in aggregate. The held-out suite did find two router misses the 73 never showed: a question about approvals was refused (H17), and "restart a server" got a status read (H34). Both are now fixed with guards in code, not prompt examples. Honest caveats: the relevance threshold was calibrated on the gold retrieval cases, and the held-out suite was written by the same team, so an independently written suite is the next check.</td>
+          <td class="evidence"><code>evaluation/held_out_cases.jsonl</code>, <code>held-out-and-three-runs.md</code>, <code>router-guards-run.md</code>, <code>agent/intent.py</code></td>
+          <td class="avoid">"No, the score is high." A high score on the suite you tuned on is exactly what overfitting looks like.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Why trust an LLM judge?<span class="topic">Evaluation</span></td>

@@ -297,3 +297,32 @@ def test_worker_marks_permanent_failures_without_retrying() -> None:
         time.sleep(0.5)
     assert row is not None and row[0] == "failed" and row[1] == 1, row
     assert "outside the knowledge root" in row[2]
+
+
+@pytest.mark.security
+def test_confidential_context_keeps_the_whole_conversation_on_the_box(api: httpx.Client) -> None:
+    """Egress is decided on the conversation, not the turn: a later question about a public
+    document still carries the earlier confidential answer in its history."""
+    headers = auth(api, "U004")
+    hosted = "nim/gpt-oss-20b"
+
+    def turn(message: str, conversation_id: str | None) -> list[dict]:
+        resp = api.post(
+            "/api/chat",
+            json={"message": message, "model": hosted, "conversation_id": conversation_id},
+            headers=headers,
+            timeout=180,
+        )
+        assert resp.status_code in (200, 503), resp.text  # 503 when no local model runs
+        return [a for a in resp.json()["attempts"] if a["model"] == hosted]
+
+    conv = api.post("/api/chat", json={"message": "hello"}, headers=headers).json()[
+        "conversation_id"
+    ]
+    turn("Summarize the compensation review notes", conv)
+    later = turn("When is the IT service desk staffed?", conv)
+    assert later and all(a["outcome"] == "skipped:egress_not_permitted" for a in later)
+
+    # Control: the same public question in a fresh conversation may use the hosted model.
+    fresh = turn("When is the IT service desk staffed?", None)
+    assert all(a["outcome"] != "skipped:egress_not_permitted" for a in fresh)

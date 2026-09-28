@@ -60,6 +60,17 @@
   siblings by that identifier rather than by the locator string, which is display text.
   Changing the chunker changes the content hash, so documents are re-indexed rather than
   silently mixing chunkings.
+- **Overlap: none, by design, and measured.** Overlap exists so that a fact cut in half by a
+  chunk boundary still appears whole in one chunk. Parent-child removes the need for it:
+  - children never cross a heading;
+  - the model is given the whole parent section, so a fact split between two children still
+    reaches it intact.
+
+  The overlapping alternative was measured on the same gold set. A fixed 128-token window
+  with a 32-token overlap is structure-blind, and it scored lower: hybrid Recall@1 0.780 vs
+  0.927 for parent-child on the 41-question report. It also stored ~25% duplicated text and
+  sent more tokens to the model (399 vs ~320 at top-3). Overlap would add duplicate rows,
+  and duplicate hits for the section collapse to remove, for no measured gain.
 - **Child-size ablation (32 / 64 / 96 / 128 tokens, parent fixed at 256):** in hybrid mode all
   four score identically (Recall@1 0.971, 95% CI 0.85-0.99); vector-only favours 32 slightly
   (0.912 vs 0.882) but the intervals overlap almost completely. **The gain came from

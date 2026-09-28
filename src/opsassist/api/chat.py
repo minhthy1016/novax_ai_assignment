@@ -18,8 +18,10 @@ from sqlalchemy import func, select
 
 from opsassist.agent.service import (
     answer_from_knowledge,
+    clarifying_abstention,
     conversation_thread,
     describe_tool_result,
+    knowledge_gap_ticket,
     review_near_misses,
 )
 from opsassist.api.common import (
@@ -46,7 +48,7 @@ from opsassist.api.schemas import (
     ToolOut,
 )
 from opsassist.auth import CurrentPrincipal, Principal
-from opsassist.config import Settings
+from opsassist.config import Settings, most_sensitive
 from opsassist.conversations import (
     ConversationNotFound,
     add_message,
@@ -69,7 +71,7 @@ from opsassist.logging_setup import get_logger
 from opsassist.memory import load_conversation_memory, update_summary
 from opsassist.policy.access import scope_for
 from opsassist.providers.base import ChatMessage, ChatParams, StreamDelta, Usage
-from opsassist.rag import GroundedAnswer, abstention, build_messages, finalize
+from opsassist.rag import GroundedAnswer, build_messages, finalize
 
 router = APIRouter(prefix="/api", tags=["chat"])
 log = get_logger("opsassist.chat")
@@ -82,6 +84,7 @@ class Prepared:
     question: str
     history: list[ChatMessage]
     model_choice: str | None  # None -> catalog default route
+    context_classification: str | None  # most sensitive context used so far in the conversation
 
 
 def _stored_choice(gateway: LLMGateway, settings: Settings, stored: str | None) -> str | None:
@@ -119,7 +122,9 @@ async def _prepare(request: Request, principal_id: str, body: ChatRequest) -> Pr
         user_msg = await add_message(
             session, conv.id, "user", body.message, request_id=request_id_of(request)
         )
-    return Prepared(conv.id, user_msg.id, body.message, history, choice)
+    return Prepared(
+        conv.id, user_msg.id, body.message, history, choice, conv.context_classification
+    )
 
 
 async def _retrieve(
@@ -143,6 +148,29 @@ async def _retrieve(
         ctx=ctx,
         model_choice=prep.model_choice,
     )
+
+
+def _egress_allowed(request: Request, prep: Prepared, retrieval: RetrievalResult) -> bool:
+    """Egress is decided on the whole conversation, not this turn alone: the history sent
+    with this turn can quote an earlier confidential answer (D-15)."""
+    settings: Settings = request.app.state.settings
+    return settings.allows_egress(
+        most_sensitive(prep.context_classification, retrieval.max_classification)
+    )
+
+
+async def _remember_context(request: Request, prep: Prepared, retrieval: RetrievalResult) -> None:
+    """Record the most sensitive context this conversation has used, before any model sees
+    it, so every later turn inherits the restriction."""
+    current = retrieval.max_classification
+    if current is None or most_sensitive(prep.context_classification, current) == (
+        prep.context_classification
+    ):
+        return
+    async with request.app.state.session_factory() as session, session.begin():
+        conv = await session.get(Conversation, prep.conversation_id)
+        if conv is not None:
+            conv.context_classification = most_sensitive(conv.context_classification, current)
 
 
 def _retrieval_out(r: RetrievalResult) -> RetrievalOut:
@@ -283,6 +311,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
             ctx.request_id,
             err.attempts,
         )
+    await _remember_context(request, prep, retrieval)
 
     result = await answer_from_knowledge(
         prep.question,
@@ -292,7 +321,7 @@ async def chat(request: Request, body: ChatRequest, principal: CurrentPrincipal)
         ctx=ctx,
         model_choice=prep.model_choice,
         params=params,
-        allow_egress=request.app.state.settings.allows_egress(retrieval.max_classification),
+        allow_egress=_egress_allowed(request, prep, retrieval),
         escalation_model=request.app.state.settings.escalation_model,
         principal=principal,
     )
@@ -478,6 +507,40 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
             },
         )
         try:
+            # The same agent decision as /api/chat: only the knowledge path streams tokens.
+            # A tool result, a refusal or a greeting is one delta and a done event.
+            decision = await _route(request, prep, principal, body)
+            if decision["route"] != "knowledge":
+                finished = True
+                tool = (
+                    ToolOut.model_validate(decision["tool"])
+                    if decision["route"] == "tool"
+                    else None
+                )
+                text = tool.message if tool else str(decision["text"])
+                msg_id = await _save_assistant(
+                    request,
+                    conv_id,
+                    text,
+                    status="complete",
+                    model_id=None,
+                    usage=None,
+                    citations=[],
+                )
+                yield _sse("delta", {"text": text})
+                yield _sse(
+                    "done",
+                    {
+                        "message_id": str(msg_id),
+                        "content": text,
+                        "route": decision["route"],
+                        "tool": tool.model_dump(mode="json") if tool else None,
+                        "citations": [],
+                        "grounded": True,
+                        "abstained": False,
+                    },
+                )
+                return
             try:
                 retrieval = await _retrieve(request, principal, prep, ctx)
             except GatewayError:
@@ -495,9 +558,10 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                     },
                 )
                 return
+            await _remember_context(request, prep, retrieval)
             if not retrieval.chunks:
                 finished = True
-                answer = abstention()
+                answer = clarifying_abstention(principal)
                 msg_id = await _save_assistant(
                     request,
                     conv_id,
@@ -513,9 +577,11 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                     {
                         "message_id": str(msg_id),
                         "content": answer.text,
+                        "route": "knowledge",
                         "citations": [],
                         "grounded": True,
                         "abstained": True,
+                        "suggested_action": knowledge_gap_ticket(prep.question, principal),
                         "retrieval": _retrieval_out(retrieval).model_dump(),
                     },
                 )
@@ -531,7 +597,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                 messages,
                 params,
                 ctx,
-                allow_egress=request.app.state.settings.allows_egress(retrieval.max_classification),
+                allow_egress=_egress_allowed(request, prep, retrieval),
             )
             async with aclosing(stream_events) as stream:
                 async for event in stream:
@@ -553,6 +619,9 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                         case StreamCompleted():
                             finished = True
                             answer = finalize("".join(produced), retrieval.chunks)
+                            if answer.abstained:
+                                # Stored with what to do next, as /api/chat returns it.
+                                answer = clarifying_abstention(principal)
                             msg_id = await _save_assistant(
                                 request,
                                 conv_id,
@@ -567,6 +636,12 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                                 {
                                     "message_id": str(msg_id),
                                     "content": answer.text,
+                                    "route": "knowledge",
+                                    "suggested_action": knowledge_gap_ticket(
+                                        prep.question, principal
+                                    )
+                                    if answer.abstained
+                                    else None,
                                     "citations": _citations_json(answer),
                                     "grounded": answer.grounded,
                                     "abstained": answer.abstained,
@@ -584,6 +659,7 @@ async def chat_stream(request: Request, body: ChatRequest, principal: CurrentPri
                                     ],
                                 },
                             )
+                            await _maybe_summarize(request, prep, principal, ctx)
                         case StreamFailed():
                             finished = True
                             await _save_assistant(

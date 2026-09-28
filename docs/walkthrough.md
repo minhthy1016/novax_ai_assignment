@@ -1,6 +1,6 @@
 # Walkthrough — kịch bản 12–13 phút
 
-*Cho buổi review 29/09/2026. Đã tập trên `main` (`2c4cd13`) từ trạng thái sạch ngày 24/09: cả 6 mục đạt; chạy liền mạch `scripts/demo.sh --no-pause` mất khoảng 30 giây. Phần còn lại của thời gian là để nói.*
+*Cho buổi review 29/09/2026. Đã tập lại trên `main` (`00ce416`) từ trạng thái sạch ngày 28/09, và cả 6 mục đều đạt. Kết quả thật của lần tập nằm trong `docs/walkthrough-recording.txt`. So với lần tập 24/09, chỉ khác cách mô hình diễn đạt ở mục 1 và 4; ví dụ nguyên văn của đề bài ở mục 3 giờ ra `pending`. Phần lớn thời gian là để nói.*
 
 ## Trước buổi review (15 phút trước giờ)
 
@@ -28,7 +28,7 @@ Chạy `scripts/demo.sh`. Script dừng trước mỗi bước, bấm Enter đ�
 | 7:00–9:00 | **4 · Prompt injection** | Tài liệu độc hại **được** truy xuất, vì nó là dữ liệu hợp lệ trong kho. Nhưng nội dung truy xuất là dữ liệu không đáng tin: được escape và không có quyền ra lệnh. Nhờ tóm tắt thì chỉ phần thông tin hợp lệ được trả về, có trích dẫn. Biến thể dùng tool thì vẫn *pending*. | `UNTRUSTED TEXT…`; câu trả lời có `[1] KB-TEST-999`; `pending` |
 | 9:00–10:30 | **5 · Provider lỗi** | Retry, fallback và timeout cho từng lần gọi. Circuit breaker mở thì lần sau bỏ qua ngay. Lỗi trả ra cho client có kiểm soát, kèm request ID, **không lộ lỗi gốc của provider**. | Danh sách `attempts`; `no_available_provider` |
 | 10:30–12:00 | **6 · Cách ly** | U001 không nhận được gì, **kể cả tiêu đề** tài liệu HR. U004 có quyền thì thấy, nhưng **NIM và Claude bị bỏ qua**, vì tài liệu confidential không được rời máy. Cách ly có 2 lớp: SQL filter và Row-Level Security. | `[]`, rồi `KB-HR-002`, rồi `skipped:egress_not_permitted` |
-| 12:00–13:00 | Kết | Đánh giá 73 ca, hai lần chạy sạch: **68–69/73 chấm tự động, 69–70/73 chấm tay (judge-v2); cách ly 10/10, tool 34/34 ở cả hai lần**. Nếu hỏi vì sao là khoảng: hai lần chỉ khác 1 ca (K18), do mô hình 3B diễn đạt khác đi. Số tham khảo: D5 63/71 (judge-v1). Nếu được hỏi về prompt: đã tự phát hiện prompt router và judge bị trùng câu với bộ đánh giá, đã gỡ bỏ và đo lại (D-34, PR #15). Đề xuất mở rộng AWS có mô hình tính công suất, chưa load test. Hạn chế nói thẳng: mô hình 3B là mức sàn, chưa có SSO thật. | `docs/trinh-bay-hoi-dong.md` §4–6 |
+| 12:00–13:00 | Kết | Mỗi bộ chạy 3 lần sạch, báo median (judge-v2): **69/73 trên bộ 73 ca, 41/42 trên bộ held-out** (viết sau khi tinh chỉnh, đóng băng trước khi chạy). Cả 3 lần: cách ly 10/10, tool 34/34, từ chối đúng 12/12. **Không thấy dấu hiệu học tủ.** Held-out còn tìm ra 2 lỗi router (H17, H34), đã sửa bằng guard trong code. Nếu hỏi vì sao dùng median: dù temperature = 0, mô hình 3B vẫn diễn đạt khác nhau khoảng 29/73 câu giữa các lần chạy. Số tham khảo: D5 63/71 (judge-v1). Nếu được hỏi về prompt: đã tự phát hiện prompt router và judge bị trùng câu với bộ đánh giá, đã gỡ bỏ và đo lại (D-34, PR #15). Đề xuất mở rộng AWS có mô hình tính công suất, chưa load test. Hạn chế nói thẳng: mô hình 3B là mức sàn, chưa có SSO thật. | `docs/trinh-bay-hoi-dong.md` §4–6 · `evaluation/reports/router-guards-run.md` |
 
 **Nếu còn thời gian, hoặc khi được hỏi về prompt (1 phút).** Mở bảng "Phát hiện: prompt bị học tủ" trong `docs/trinh-bay-hoi-dong.md` §4. Ba ý:
 1. Đã tự phát hiện ví dụ trong prompt trùng với bộ đánh giá (router 10 câu, judge 3 đáp án), và đã gỡ bỏ.

@@ -18,10 +18,17 @@ FastAPI ─ CorrelationMiddleware (request ID, JSON log line, HTTP metrics)
 AuthN → Principal{user, department, permissions}  (JWT; permissions loaded per request)
   ▼
 Orchestrator (LangGraph) ─ small talk | knowledge | tool | refuse
+  ├─ Router: small local model proposes the route; code guards correct it
+  │    (write needs its record named · question about rules → knowledge ·
+  │     unsupported action → refuse · read with invalid arguments → knowledge)
+  ├─ Memory: rolling summary of older turns + recent turns within a token budget
   ├─ Retrieval: AccessScope -> SQL filter + Postgres RLS -> hybrid rank -> gate -> top-K
+  │    └─ gate admitted nothing -> judge reviews up to 3 near misses before abstaining
+  ├─ Answer: grounded prompt -> citation checks -> escalation to a larger local model
+  │    when uncited or "not covered" (D-33) -> abstention with a knowledge-gap ticket offer
   ├─ Policy engine: authorizes each tool call against the principal
   ├─ Tools: typed schemas, pending-action approval for sensitive ones
-  └─ Provider gateway: routing, retry, timeout, fallback, usage
+  └─ Provider gateway: routing, retry, timeout, fallback, egress control, usage
   ▼
 Response with citations ─ audit record (hash-chained) ─ metrics ─ trace (Opik, optional)
 ```
@@ -57,10 +64,12 @@ flowchart LR
     routes["api/<br/>chat · stream · search · models · conversations"]
     policy["policy/access.py<br/>AccessScope from DB permissions"]
     retrieval["knowledge/retrieval.py<br/>hybrid search · RRF · relevance gate · top-4 sections"]
-    rag["rag.py<br/>grounded prompt · citation check · abstention"]
+    rag["rag.py<br/>grounded prompt · citation check · abstention<br/>gate-review prompt"]
+    service["agent/service.py<br/>gate review · escalation (D-33)<br/>knowledge-gap ticket"]
+    memory["memory.py<br/>summary + recent turns<br/>summarised on-box only"]
     gateway["gateway/<br/>routing · retry · fallback · circuit breaker<br/>egress control · usage per attempt"]
     providers["providers/<br/>NIM · Claude · Ollama · mock"]
-    agent["agent/ (LangGraph)<br/>route: small talk · knowledge · tool · refuse"]
+    agent["agent/graph.py (LangGraph)<br/>route: small talk · knowledge · tool · refuse<br/>+ intent.py and registry guards"]
     tools["tools/ + policy/<br/>typed schemas · permissions<br/>approvals · hash-chained audit"]
   end
 
@@ -77,7 +86,8 @@ flowchart LR
   routes --> agent
   agent --> tools --> pg
   routes --> policy --> retrieval --> pg
-  routes --> rag --> gateway --> providers --> models
+  routes --> memory --> pg
+  routes --> service --> rag --> gateway --> providers --> models
   retrieval -. "query embedding" .-> gateway
   agent -. "routing call" .-> gateway
   cli --> redis --> ingest --> pg
@@ -164,6 +174,10 @@ engineering level, each control is one of these, and each has its own record:
 | Hash-chained, append-only audit written in the action's transaction | `policy/audit.py` | [D-32](docs/decisions/D-32-tamper-evident-audit.md) |
 | Upload confined to the uploader's department; metadata untrusted | `knowledge/upload.py` | [D-27](docs/decisions/D-27-upload-an-authorized-user-becomes-a-content-sour.md) |
 | Per-caller rate limits on model-backed routes (capacity and cost, not authorization) | `ratelimit.py` | [D-61](docs/decisions/D-61-rate-limiting-per-caller-token-buckets.md) |
+| Router guards: a write needs its record named; a question about rules is never refused; an unsupported action is refused | `tools/registry.py`, `agent/intent.py`, `agent/graph.py` | [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) |
+| Near misses shown to the judge come from the same scoped query; confidential ones only reach on-box models | `agent/service.py` | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
+| Conversation summary is written by on-box models only (`allow_egress=False`) | `memory.py` | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
+| Egress decided on the whole conversation: its most sensitive context is recorded before any model sees it, and every later turn inherits the restriction | `api/chat.py`, migration 0009 | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
 
 Run them: `make test-security`.
 
@@ -173,7 +187,8 @@ Everything lives in [`evaluation/`](evaluation/); the reasoning is [D-50](docs/d
 
 | Suite | What it answers | Command |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 73 cases (the frozen D5 run used the first 71), one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) + `run_eval.py` | 73 cases (the frozen D5 run used the first 71), one named employee each, across the eight categories: answerable · unanswerable · misleading premise · cross-department · tool selection · confirmation · injection · provider failure. The system was tuned on these | `make eval` |
+| [`evaluation/held_out_cases.jsonl`](evaluation/held_out_cases.jsonl) | 44 held-out cases, same categories, frozen before they first ran; they measure whether fixes generalise | `run_eval --cases evaluation/held_out_cases.jsonl --report <name>.md` |
 | `judge.py` | Per-claim verdicts (`supported` / `contradicted` / `missing`), per-citation support ("does this passage say this sentence?") and untraceable claims - from a **different model family**, called outside the pipeline, and required to quote the answer before it may call a fact contradicted | part of `make eval` |
 | `chunking_eval.py` | 11 chunking strategies incl. a Docling HybridChunker reference, on a corpus that now includes a deliberately awkward PDF (tables, two columns, a continued table) | `uv run python -m evaluation.chunking_eval` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) + `retrieval_api_eval.py` | Rank-sensitive retrieval through the live API, in the caller's scope | `make test-eval` |
@@ -188,6 +203,17 @@ prose is judged by a model**. The judge is local, so judging a confidential answ
 sends it off the machine - the same rule the assistant follows (D-15). Every rate is
 reported with a 95% Wilson interval and every failing case is printed with its answer, so
 the report can be audited rather than believed.
+
+**Protocol for a headline number:**
+- Run each suite three times on a clean stack (`make reset && make up && make ingest-inline`).
+- Report the median and the range. At temperature 0 the 3B model still words about 29 of 73
+  answers differently between runs, so a single run moves by up to ±3 cases.
+- Every report records the prompt hashes and the suite file with its hash, so a number is
+  tied to the exact prompts and cases that produced it.
+
+Current results: [`router-guards-run.md`](evaluation/reports/router-guards-run.md):
+- 73-case suite: median 69/73;
+- held-out suite: median 41/42 on the cases no fix has looked at.
 
 ## 6. Scale proposal
 

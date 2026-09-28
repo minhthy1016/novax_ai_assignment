@@ -48,3 +48,19 @@ def test_logs_are_single_line_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert record["event"] == "hello"
     assert record["service"] == "test-service"
     assert record["password"] == REDACTED
+
+
+def test_tool_calls_are_counted_with_bounded_labels() -> None:
+    from opsassist.metrics import TOOL_CALLS
+    from opsassist.tools.executor import ToolOutcome, _count
+
+    def value(tool: str, stage: str, outcome: str) -> float:
+        return TOOL_CALLS.labels(tool=tool, decision=stage, outcome=outcome)._value.get()
+
+    before = value("get_server_status", "request", "denied")
+    _count("get_server_status", "request", ToolOutcome("denied", "get_server_status", "no"))
+    assert value("get_server_status", "request", "denied") == before + 1
+    # A name the model made up never becomes a label of its own.
+    unknown = value("unknown", "request", "denied")
+    _count("rm -rf /", "request", ToolOutcome("denied", "rm -rf /", "no such tool"))
+    assert value("unknown", "request", "denied") == unknown + 1

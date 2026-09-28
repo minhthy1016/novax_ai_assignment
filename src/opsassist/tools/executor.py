@@ -34,6 +34,7 @@ from opsassist.db.models import PendingAction, Server, Ticket, User, VpnProfile
 from opsassist.gateway.gateway import CallContext, LLMGateway
 from opsassist.knowledge.retrieval import retrieve
 from opsassist.logging_setup import get_logger
+from opsassist.metrics import TOOL_CALLS
 from opsassist.policy import audit
 from opsassist.policy.access import scope_for
 from opsassist.tools.registry import TOOLS, ToolArgs, ToolSpec
@@ -286,7 +287,24 @@ def summarize(spec: ToolSpec, args: ToolArgs) -> str:
     return f"Run {spec.name}"
 
 
+def _count(tool: str, stage: str, outcome: ToolOutcome) -> ToolOutcome:
+    """One metric per tool decision. Labels stay bounded (D-05): a tool name the registry
+    does not know is counted as "unknown", never as whatever the model wrote."""
+    TOOL_CALLS.labels(
+        tool=tool if tool in TOOLS else "unknown", decision=stage, outcome=outcome.status
+    ).inc()
+    return outcome
+
+
 async def run_tool(
+    principal: Principal, tool: str, raw_args: dict[str, Any], ctx: ToolContext
+) -> ToolOutcome:
+    """Validate, authorize and run (or propose) one tool call; every outcome is audited and
+    counted in ``opsassist_tool_calls_total``."""
+    return _count(tool, "request", await _run_tool(principal, tool, raw_args, ctx))
+
+
+async def _run_tool(
     principal: Principal, tool: str, raw_args: dict[str, Any], ctx: ToolContext
 ) -> ToolOutcome:
     async with ctx.factory() as session, session.begin():
@@ -395,6 +413,13 @@ async def _load_for_decision(session: AsyncSession, pending_id: uuid.UUID) -> Pe
 
 
 async def approve_pending(
+    approver: Principal, pending_id: uuid.UUID, confirm_hash: str, ctx: ToolContext
+) -> ToolOutcome:
+    outcome = await _approve_pending(approver, pending_id, confirm_hash, ctx)
+    return _count(outcome.tool or "unknown", "approval", outcome)
+
+
+async def _approve_pending(
     approver: Principal, pending_id: uuid.UUID, confirm_hash: str, ctx: ToolContext
 ) -> ToolOutcome:
     """Execute a pending sensitive action after an explicit, matching confirmation.
