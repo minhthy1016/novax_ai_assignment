@@ -13,3 +13,14 @@
 - `internal` material may go to hosted providers today. Setting the variable to `public`
   keeps internal documents on-box as well - one environment variable, no code change.
 **Confirmed with the team lead.**
+
+**Update (28 Sep 2026): the rule holds for the whole conversation.** Egress was first decided
+per turn, from that turn's sources. A later turn about a public document could then send an
+earlier confidential answer, carried in its history, to a hosted model. Now each
+conversation records the most sensitive context its answers have used
+(`conversations.context_classification`, migration 0009). The record is written right after
+retrieval, before any model sees the context, and each turn decides egress on the higher of
+that record and its own sources. The rule is one-way: a conversation that has used
+confidential context stays on-box. Test:
+`test_confidential_context_keeps_the_whole_conversation_on_the_box`, with a fresh
+conversation as the control.

@@ -177,6 +177,7 @@ engineering level, each control is one of these, and each has its own record:
 | Router guards: a write needs its record named; a question about rules is never refused; an unsupported action is refused | `tools/registry.py`, `agent/intent.py`, `agent/graph.py` | [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) |
 | Near misses shown to the judge come from the same scoped query; confidential ones only reach on-box models | `agent/service.py` | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
 | Conversation summary is written by on-box models only (`allow_egress=False`) | `memory.py` | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
+| Egress decided on the whole conversation: its most sensitive context is recorded before any model sees it, and every later turn inherits the restriction | `api/chat.py`, migration 0009 | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
 
 Run them: `make test-security`.
 
