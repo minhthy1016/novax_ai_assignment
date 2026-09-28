@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from pathlib import Path
 
 import httpx
@@ -20,7 +19,7 @@ from opsassist.config import Settings
 from opsassist.db.session import create_engine, create_session_factory
 from opsassist.gateway.factory import build_gateway, close_providers
 from opsassist.knowledge.ingest import deactivate, discover, ingest_file
-from tests.integration.conftest import token_for
+from tests.integration.conftest import token_for, wait_for_job
 
 pytestmark = pytest.mark.integration
 
@@ -285,18 +284,9 @@ def test_worker_marks_permanent_failures_without_retrying() -> None:
     from opsassist.worker import enqueue_ingestion
 
     job_id = asyncio.run(enqueue_ingestion(Path("../../etc/passwd.md")))
-    deadline = time.time() + 30
-    row = None
-    while time.time() < deadline:
-        with psycopg.connect(DB) as conn:
-            row = conn.execute(
-                "SELECT status, attempts, detail FROM ingestion_jobs WHERE id = %s", (job_id,)
-            ).fetchone()
-        if row and row[0] not in ("queued", "running"):
-            break
-        time.sleep(0.5)
-    assert row is not None and row[0] == "failed" and row[1] == 1, row
-    assert "outside the knowledge root" in row[2]
+    status, attempts, detail = wait_for_job(job_id)
+    assert (status, attempts) == ("failed", 1), (status, attempts, detail)
+    assert detail and "outside the knowledge root" in detail
 
 
 @pytest.mark.security

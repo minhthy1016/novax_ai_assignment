@@ -5,9 +5,37 @@ import time
 from collections.abc import Iterator
 
 import httpx
+import psycopg
 import pytest
 
 API = os.environ.get("OPSASSIST_API_URL", "http://127.0.0.1:8000")
+APP_DB = os.environ.get(
+    "OPSASSIST_DATABASE_URL",
+    "postgresql+psycopg://opsassist_app:opsassist_app_dev@localhost:5432/opsassist",
+).replace("postgresql+psycopg://", "postgresql://")
+FINISHED = ("succeeded", "unchanged", "failed", "dead")
+
+
+def wait_for_job(job_id: str, timeout: float = 180) -> tuple[str, int, str | None]:
+    """Wait for one ingestion job to reach a final state and return (status, attempts,
+    detail).
+
+    Tests used to poll search results for a fixed 45 s. On a busy CI runner the upload's job
+    can sit behind other queued jobs, or a transient retry with backoff, for longer than
+    that, and the test then failed without saying why. Waiting on the job itself separates
+    "not finished yet" from "failed", and a failure reports the worker's own detail.
+    """
+    deadline = time.monotonic() + timeout
+    row = None
+    while time.monotonic() < deadline:
+        with psycopg.connect(APP_DB) as conn:
+            row = conn.execute(
+                "SELECT status, attempts, detail FROM ingestion_jobs WHERE id = %s", (job_id,)
+            ).fetchone()
+        if row and row[0] in FINISHED:
+            return str(row[0]), int(row[1]), row[2]
+        time.sleep(0.5)
+    raise AssertionError(f"ingestion job {job_id} not finished after {timeout:.0f}s: {row}")
 
 
 class WaitsOutRateLimits(httpx.HTTPTransport):

@@ -13,7 +13,7 @@ import httpx
 import psycopg
 import pytest
 
-from tests.integration.conftest import token_for
+from tests.integration.conftest import token_for, wait_for_job
 
 pytestmark = pytest.mark.integration
 
@@ -256,13 +256,10 @@ def test_upload_is_confined_to_the_uploader_department(api: httpx.Client) -> Non
     doc_key = created.json()["doc_key"]
     assert created.json()["department"] == "hr"
 
-    deadline = time.time() + 45
-    hits: list[str] = []
-    while time.time() < deadline and not hits:
-        time.sleep(1)
-        found = api.post("/api/search", json={"query": marker}, headers=auth(api, "U004")).json()
-        hits = [h["doc_key"] for h in found["hits"]]
-    assert doc_key in hits, "uploaded document was not indexed"
+    status, _, detail = wait_for_job(created.json()["job_id"])
+    assert status == "succeeded", f"ingestion ended {status}: {detail}"
+    found = api.post("/api/search", json={"query": marker}, headers=auth(api, "U004")).json()
+    assert doc_key in [h["doc_key"] for h in found["hits"]], "indexed but not retrievable"
 
     other = api.post("/api/search", json={"query": marker}, headers=auth(api, "U001")).json()
     assert all(h["doc_key"] != doc_key for h in other["hits"])  # Engineering cannot see it
