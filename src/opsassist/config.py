@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     retrieval_candidates: int = Field(default=20, ge=1, le=200)
     # Admit only hits within this similarity margin of the best hit (drops the weak tail).
     retrieval_relative_margin: float = Field(default=0.10, ge=0.0, le=1.0)
+    # Gate review: when the relevance gate admits nothing, sections scoring within this
+    # margin below the model's min_relevance go to a judge before the assistant abstains,
+    # so a relevant passage just under the bar is not lost silently. 0 turns it off.
+    gate_review_margin: float = Field(default=0.10, ge=0.0, le=1.0)
+    gate_review_max: int = Field(default=3, ge=1, le=10)
 
     # Routing is a small, frequent classification: it runs on a fast local model by default,
     # independent of the model the user picked for answers (a slow hosted model would make

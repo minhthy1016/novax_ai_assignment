@@ -13,7 +13,8 @@ Pipeline (D-21):
    best hit. Full-text matches improve *ranking* (via RRF) but cannot admit a chunk on
    their own: single common words ("incident", "notes") otherwise let unrelated chunks in.
    Exact identifiers (server IDs, ticket numbers) are tool lookups, not retrieval.
-   Nothing surviving -> the caller abstains without calling a model.
+   Nothing surviving -> the near misses (within ``gate_review_margin`` below the bar) are
+   returned separately for a judge to review; the caller abstains only if it admits none.
 5. Top-K (default 4).
 
 Isolation is enforced twice, in the same transaction:
@@ -104,6 +105,10 @@ class RetrievalResult:
     latency_ms: float
     embedding_model: str
     tables: list[str] = field(default_factory=list)
+    # Filled only when the gate admitted nothing: sections just under the bar, for review.
+    near_misses: list[RetrievedChunk] = field(default_factory=list)
+    reviewed: int = 0  # near misses a judge looked at
+    admitted_by_review: int = 0  # of those, the ones it judged to answer the question
 
     @property
     def has_confidential(self) -> bool:
@@ -223,23 +228,18 @@ async def retrieve(
     best = max((c.similarity for c in fused.values() if c.similarity is not None), default=0.0)
     floor = max(threshold, best - settings.retrieval_relative_margin)
     kept: list[RetrievedChunk] = []
+    missed: list[RetrievedChunk] = []
     below = 0
+    review_floor = threshold - settings.gate_review_margin
     for cand in fused.values():
         if cand.similarity is None or cand.similarity < floor:
             below += 1
+            if settings.gate_review_margin and (cand.similarity or 0.0) >= review_floor:
+                missed.append(cand.to_chunk())
             continue
         kept.append(cand.to_chunk())
-    kept.sort(key=lambda c: c.score, reverse=True)
-    # Collapse children of the same parent section: keep the best-scoring match per section.
-    # The key is the parent's identity, not its locator (locators are display text).
-    seen: set[tuple[str, str, int | None, str]] = set()
-    distinct: list[RetrievedChunk] = []
-    for c in kept:
-        key = (c.table, *c.parent_id, c.locator if c.parent_id[1] is None else "")
-        if key not in seen:
-            seen.add(key)
-            distinct.append(c)
-    kept = distinct
+    kept = _distinct_sections(kept)
+    near_misses = [] if kept else _distinct_sections(missed)[: settings.gate_review_max]
     elapsed = time.perf_counter() - started
     RETRIEVAL_LATENCY.observe(elapsed)
     return RetrievalResult(
@@ -249,4 +249,18 @@ async def retrieve(
         latency_ms=round(elapsed * 1000, 2),
         embedding_model=model_id,
         tables=[t for t, _, _ in tables],
+        near_misses=near_misses,
     )
+
+
+def _distinct_sections(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Best-scoring match per parent section, best first. The key is the parent's identity,
+    not its locator (locators are display text)."""
+    seen: set[tuple[str, str, int | None, str]] = set()
+    distinct: list[RetrievedChunk] = []
+    for c in sorted(chunks, key=lambda c: c.score, reverse=True):
+        key = (c.table, *c.parent_id, c.locator if c.parent_id[1] is None else "")
+        if key not in seen:
+            seen.add(key)
+            distinct.append(c)
+    return distinct
