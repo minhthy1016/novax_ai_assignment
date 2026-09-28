@@ -212,13 +212,64 @@ Số liệu do `evaluation/capacity.py` tính ra (`make capacity`). Mỗi đầu
   - câu trả lời có thể thiếu trích dẫn (hệ thống gắn nhãn *uncited*, nhưng chưa chặn);
   - gán nguồn chỉ được kiểm tra với câu có con số;
   - đôi khi thêm câu "nguồn không đề cập…" không cần thiết, có lúc sai.
-- **Router nhỏ không có ví dụ thì yếu hơn:** câu quá ngắn có thể đi sai đường. Skill ghi dữ liệu (ticket, VPN) giờ bị code chặn nếu yêu cầu không nhắc tới đúng loại bản ghi đó.
+- **Router nhỏ không có ví dụ thì yếu hơn:** câu quá ngắn có thể đi sai đường. Có ba guard trong code sửa lại quyết định của router:
+  - skill ghi dữ liệu (ticket, VPN) bị chặn nếu yêu cầu không nhắc tới đúng loại bản ghi đó;
+  - câu *hỏi* về quy định không bị từ chối (H17);
+  - hành động không có skill nào làm được thì bị từ chối, không trả lời bằng việc đọc trạng thái (H34).
+
+  Các guard này dựa vào hình thức câu tiếng Anh.
 - **Mô hình 3B là mức sàn:** các con số là cận dưới; gateway có thể chuyển sang mô hình lớn hơn mà không đổi code.
 - **Chưa có SSO thật:** dùng token dev thay cho IdP công ty.
 - **AWS mới thiết kế, chưa triển khai và chưa load test.**
 
+---
+
+## 7. Tự đánh giá theo brief: điểm mạnh và điểm cần cải thiện
+
+*Đối chiếu `main` với `docs/brief/Senior_AI_Engineer_Onboarding_Assignment.pdf`, theo thang chấm 100 điểm của brief. Ước lượng: **khoảng 88–92/100**, và không còn critical finding nào mở.*
+
+### 7.1. Sáu điểm nhóm muốn nhấn mạnh, và cách nói cho chính xác
+
+| # | Điểm | Cách nói trước hội đồng |
+|---|---|---|
+| 1 | **Có escalation path** (D-33) | Câu trả lời có dấu hiệu yếu (không trích dẫn, hoặc nói "nguồn không đề cập") được thử lại **một lần** bằng Llama 8B. Nếu vẫn không được thì trả lời "không tìm thấy" kèm gợi ý tạo ticket. *Stream chưa escalate.* |
+| 2 | **Parent-child chunking, chi phí token hợp lý** | Khớp trên chunk nhỏ (~64 token), đưa cả section (≤256 token) cho mô hình. Đã so với 10 chiến lược khác, kể cả Docling. Không dùng overlap, và có số đo cho lý do đó (cửa sổ 128/32: Recall@1 0,780 so với 0,927). Khoảng 480–550 token mỗi ca. |
+| 3 | **Llama thực thi, Qwen chấm; prompt chỉ có quy tắc** | Llama 3B trả lời và định tuyến, Llama 8B nhận escalation. **Qwen chỉ là judge offline trong eval**, khác họ model để *không tự chấm bài của mình*. Judge chạy lúc runtime (xét các đoạn "suýt đạt") là Llama 3B. Prompt chỉ có quy tắc; có test chặn trong CI nếu prompt trùng câu chữ với bộ đánh giá (D-34). |
+| 4 | **An toàn chấm bằng code** | Tool, phân quyền, cách ly, abstention, trích dẫn hợp lệ và cụm từ cấm được chấm **bằng code**. Riêng **câu văn** (dữ kiện đúng, trích dẫn có hỗ trợ đúng câu không, có nói ngoài nguồn không) do **judge Qwen** chấm, và **chính judge cũng được đo** so với 39 nhãn chấm tay (36/39). *Đừng nói "không qua LLM".* |
+| 5 | **Bốn bộ dữ liệu đánh giá, mỗi bộ một mục đích** | `cases.jsonl` (73 ca, bộ đã tinh chỉnh) · `held_out_cases.jsonl` (44 ca, đóng băng trước khi chạy, kiểm tra overfit) · `judge_labels.jsonl` (39 nhãn chấm tay, đo judge) · `retrieval_cases.jsonl` (41 ca, bộ vàng cho retrieval). **Không có gì được train.** |
+| 6 | **RLS, phân quyền rõ ràng** | Hai lớp: SQL filter **và** Postgres RLS, chạy dưới role không phải superuser nên không vượt RLS được (D-17). Tài liệu mật nằm ở bảng riêng. Egress được xét trên **cả hội thoại** (migration 0009). Tool dùng cùng phạm vi quyền. |
+
+### 7.2. Điểm mạnh khác, theo từng hạng mục chấm
+
+| Hạng mục (điểm tối đa) | Bằng chứng |
+|---|---|
+| **Agent và tool (15)** | Phê duyệt hai người gắn **action hash**, và **chỉ thực thi một lần** (duyệt lại bị chặn), đúng phần "idempotency" của thang chấm. Không có tool shell, SQL hay deploy. Kết quả tool dựng từ dữ liệu thật, mô hình không được diễn đạt lại, nên **không thể bịa ra một thành công chưa xảy ra**. Lỗi của router được sửa bằng guard trong code (T08, K08, H17, H34), không bằng prompt. |
+| **Bảo mật (10)** | Audit nối chuỗi hash, kiểm tra được qua `/api/audit/verify`. Tài liệu độc hại được index và demo thật: nội dung bị escape và chỉ coi là dữ liệu. Rate limit theo từng người gọi. Secret dùng `SecretStr`. |
+| **Tích hợp LLM (10)** | 4 provider (NIM, Claude, Ollama, mock). Retry kèm backoff, fallback, circuit breaker. Stream chỉ fallback trước token đầu tiên. Usage và chi phí ghi cho từng lần gọi. |
+| **Evaluation (10)** | Ba judge tách riêng. Có bộ held-out, và báo **median 3 lần chạy** (69/73 và 41/42). Hash của prompt và bộ ca có trong mọi báo cáo. Có baseline không RAG làm đối chứng. **Tự phát hiện prompt "học tủ" và công khai** (D-34). |
+| **Deployment (10)** | Docker Compose, health/readiness, log JSON có request ID, metric Prometheus (có cả tool call), 9 migration, worker có dead-letter queue, CI. |
+| **Tài liệu và walkthrough (5)** | 37 ADR có ghi phương án thay thế, bảng traceability yêu cầu → code → test, demo script kèm bản ghi thật, Q&A song ngữ, mục hạn chế nói thẳng. |
+
+### 7.3. Điểm cần cải thiện, theo thứ tự ưu tiên
+
+| Ưu tiên | Điểm yếu | Hướng xử lý |
+|---|---|---|
+| 1 | **Tiền đề sai không được đính chính** (M01, M02, M04, H27), nhóm lỗi lớn nhất còn lại | Chờ team lead quyết về hành vi mong muốn, rồi thêm nhánh "đính chính có trích dẫn" |
+| 2 | **Mô hình 3B là mức sàn:** khoảng 29/73 câu diễn đạt khác nhau giữa các lần chạy; p95 khoảng 7 s do escalation phải swap mô hình trên máy 16 GB | Đây là giới hạn phần cứng demo. D-60 đề xuất vLLM trên GPU; gateway đổi mô hình mà không đổi code |
+| 3 | **Judge vẫn chấm nhầm câu mở đầu bằng "No, …"** (M03, H12) | Mọi ca trượt đều in câu trả lời để người đọc tự phán; đo lại bằng `judge_drift.py` |
+| 4 | **Phép đo chưa hoàn toàn độc lập:** held-out do chính nhóm viết và đã dùng 2 ca (H17, H34); ngưỡng 0,60 được chỉnh trên bộ retrieval vàng | Nhờ người khác viết một bộ held-out mới; tách dữ liệu hiệu chỉnh khỏi dữ liệu kiểm tra |
+| 5 | **Guard router dựa trên câu tiếng Anh:** câu tiếng Việt hoặc tiếng Mã Lai không được các guard bảo vệ | Thêm từ vựng đa ngôn ngữ, hoặc lớp quyết định có xác suất (đề xuất JEV, PR #23) |
+| 6 | **Stream không escalate;** chưa viết lại câu hỏi nối tiếp; không reranker; không OCR | Làm theo mục "Future improvements" trong README |
+| 7 | **Chưa sẵn sàng production:** chưa có OIDC; API và worker dùng chung DB role; circuit breaker theo từng instance; rate limit mở khi Redis lỗi; upload không qua bước duyệt, không quét virus; Claude chưa chạy live | Đã ghi trong README "Known limitations" |
+| 8 | **Topology của brief chưa đủ:** worker chưa chạy job đánh giá, Redis chưa làm cache, tracing chỉ là tuỳ chọn, AWS chưa load test | D-60 nêu 3 phép đo cần làm trước |
+| 9 | **`api/chat.py` dài 792 dòng,** nhánh chat và stream lặp logic (retrieval, egress, abstention, ticket) | Tách thành một pipeline dùng chung cho cả hai |
+
+**Nên chủ động nói trước khi bị hỏi:** điểm 1, 2 và 4.
+
+---
+
 **Tài liệu:**
 - `README.md`: tổng quan và demo;
 - `architecture.md`: kiến trúc;
-- `docs/decisions/`: 35 quyết định;
+- `docs/decisions/`: 37 quyết định;
 - `evaluation/reports/analysis.md`: phân tích từng ca lỗi.
