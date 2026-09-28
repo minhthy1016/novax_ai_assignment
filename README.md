@@ -166,7 +166,7 @@ sequenceDiagram
     llm-->>gw: answer with [n] citation markers
     gw->>db: usage row per attempt (tokens, latency, cost, outcome)
     opt uncited, or says the sources do not cover part (D-33)
-      api->>gw: same prompt once on llama3.1-8b; keep it only if it is cited
+      api->>gw: same prompt once on llama3.1-8b, kept only if it is cited
     end
     api->>api: keep only citations that point at retrieved sources
     api->>db: save answer + citations
