@@ -376,3 +376,17 @@ def test_a_ticket_keeps_the_requesters_own_words() -> None:
     # No duplication when the model simply echoed the request.
     assert with_provenance(f"{asked} please", asked) == f"{asked} please"
     assert with_provenance(written, None) == written
+
+
+def test_a_conversation_keeps_its_most_sensitive_context() -> None:
+    """Egress is decided on the whole conversation: once an answer drew on confidential
+    context, a later turn's history can quote it, so that turn may not leave the box either."""
+    from opsassist.config import Settings, most_sensitive
+
+    assert most_sensitive(None, "internal") == "internal"
+    assert most_sensitive("confidential", "internal") == "confidential"
+    assert most_sensitive("public", None, "internal") == "internal"
+    assert most_sensitive(None, None) is None
+    assert most_sensitive("unknown-label", "public") == "unknown-label"  # unknown = confidential
+    settings = Settings(env="test")
+    assert not settings.allows_egress(most_sensitive("confidential", "internal"))

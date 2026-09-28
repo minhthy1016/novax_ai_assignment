@@ -413,3 +413,38 @@ def test_raising_a_ticket_directly_uses_the_tool_s_validation(api: httpx.Client)
         "/api/tickets", json={"title": "Valid title", "severity": "low", "details": "details"}
     )
     assert anonymous.status_code == 401
+
+
+def test_streaming_goes_through_the_agent(api: httpx.Client) -> None:
+    """/api/chat/stream takes the same route as /api/chat: a tool request is answered by the
+    tool, in one delta and a done event, not by streaming a knowledge answer."""
+    import json
+
+    resp = api.post(
+        "/api/chat/stream",
+        json={
+            "message": "Check whether web-prod-03 is healthy",
+            "model": ROUTER_MODEL if "mock" in ROUTER_MODEL else None,
+        },
+        headers=auth(api, "U001"),
+        timeout=180,
+    )
+    assert resp.status_code == 200
+    events = []
+    for block in resp.text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((lines["event"], json.loads(lines["data"])))
+    assert [name for name, _ in events] == ["meta", "delta", "done"]
+    done = events[-1][1]
+    assert done["route"] == "tool"
+    assert (done["tool"]["name"], done["tool"]["status"]) == ("get_server_status", "ok")
+    assert "healthy" in done["content"]
+
+
+def test_tool_calls_are_exported_as_metrics(api: httpx.Client) -> None:
+    ask(api, "U001", "Check whether web-prod-03 is healthy")
+    metrics = api.get("/metrics").text
+    assert (
+        'opsassist_tool_calls_total{decision="request",outcome="ok",tool="get_server_status"}'
+        in metrics
+    )

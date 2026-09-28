@@ -89,6 +89,9 @@ class Conversation(Base):
     # Rolling summary of turns older than summary_upto_seq (token-budget strategy).
     summary: Mapped[str | None] = mapped_column(Text)
     summary_upto_seq: Mapped[int | None] = mapped_column(BigInteger)
+    # The most sensitive classification any answer in this conversation drew on. The
+    # history of a later turn can quote it, so egress is decided on this too (D-15).
+    context_classification: Mapped[str | None] = mapped_column(Text)
     # The user's current model choice; switching models mid-conversation updates it and the
     # full history carries over to the new model.
     model_id: Mapped[str | None] = mapped_column(Text)

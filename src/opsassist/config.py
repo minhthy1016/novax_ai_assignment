@@ -21,6 +21,15 @@ MIN_JWT_SECRET_BYTES = 32
 DEV_APP_DB_PASSWORD = "opsassist_app_dev"  # noqa: S105 - sentinel, rejected outside dev
 
 
+_RANK = {"public": 0, "internal": 1, "confidential": 2}
+
+
+def most_sensitive(*classifications: str | None) -> str | None:
+    """The highest of these classifications; an unknown one counts as confidential."""
+    present = [c for c in classifications if c is not None]
+    return max(present, key=lambda c: _RANK.get(c, 2)) if present else None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="OPSASSIST_",
@@ -112,10 +121,9 @@ class Settings(BaseSettings):
 
     def allows_egress(self, classification: str | None) -> bool:
         """May context of this classification leave our boundary?"""
-        rank = {"public": 0, "internal": 1, "confidential": 2}
         if classification is None:
             return True
-        return rank.get(classification, 2) <= rank[self.egress_max_classification]
+        return _RANK.get(classification, 2) <= _RANK[self.egress_max_classification]
 
     @property
     def allow_any_model(self) -> bool:

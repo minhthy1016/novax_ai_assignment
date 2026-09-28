@@ -541,6 +541,17 @@ type and latency only.
   K distinct sections. Chosen against 7 alternatives including per-page and Docling's
   HybridChunker (`evaluation/reports/chunking.md`); the alternatives live in
   `evaluation/chunkers.py`.
+- **No chunk overlap.** Overlap guards against a fact being cut at a chunk boundary.
+  Parent-child avoids that problem instead: children never cross a heading, and the model
+  reads the whole parent section. The overlapping alternative was measured: a fixed
+  128-token window with 32 tokens of overlap scored hybrid Recall@1 0.780 vs 0.927, and sent
+  more tokens to the model ([D-20](docs/decisions/D-20-ingestion-parsing-metadata-chunking-embeddings.md)).
+- **Embedding model, top-K, reranking:**
+  - `nomic-embed-text` runs locally, so confidential text is embedded on the box.
+  - Top-4 distinct sections are sent to the model.
+  - There is no cross-encoder reranker: reciprocal rank fusion of vector and full-text
+    search already ranks the expected source at MRR 0.923
+    ([D-21](docs/decisions/D-21-retrieval-hybrid-search-fusion-relevance-gate-to.md)).
 
 ### End-to-end: a document
 

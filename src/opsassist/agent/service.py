@@ -255,7 +255,7 @@ def knowledge_gap_ticket(question: str, principal: Principal | None) -> dict[str
     }
 
 
-def _clarifying_abstention(principal: Principal | None) -> GroundedAnswer:
+def clarifying_abstention(principal: Principal | None) -> GroundedAnswer:
     hint = clarify_hint(principal)
     if principal is not None and principal.has("ticket:create"):
         hint += " You can also raise a ticket for the document owner."
@@ -289,7 +289,7 @@ async def answer_from_knowledge(
     more on that model, with the same sources and the same egress rule (D-33).
     """
     if not retrieval.chunks:
-        answer = _clarifying_abstention(principal)
+        answer = clarifying_abstention(principal)
         empty = AnswerResult(
             text=answer.text, answer=answer, retrieval=retrieval, route="knowledge"
         )
@@ -303,7 +303,7 @@ async def answer_from_knowledge(
         return AnswerResult(text="", answer=abstention(), retrieval=retrieval, error=err)
     answer = finalize(outcome.result.content, retrieval.chunks)
     if answer.abstained:
-        answer = _clarifying_abstention(principal)
+        answer = clarifying_abstention(principal)
     result = _result(answer, retrieval, outcome)
 
     reason = escalation_reason(answer, bool(retrieval.chunks))
