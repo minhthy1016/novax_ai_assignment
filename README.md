@@ -664,6 +664,11 @@ Tokens per case (mean):        527–564                    470–487
 Reference - frozen D5 run (judge-v1, 71 cases): 63/71 strict, 66/71 by hand
 ```
 
+**Regression check after the final fixes** (conversation-wide egress, routed streaming, tool
+metrics): one clean run per suite gave 70/73 and 43/44 (41/42 untouched). Both are inside the
+ranges above, and every code-graded axis is unchanged
+([`final-gaps-run.md`](evaluation/reports/final-gaps-run.md)).
+
 The p95 is higher than before D-33: an answer with a warning sign is retried once on the 8B
 model, which on a 16 GB laptop also means swapping models in memory.
 
