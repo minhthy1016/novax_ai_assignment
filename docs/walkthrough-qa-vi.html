@@ -77,7 +77,7 @@
   <header>
     <span class="eyebrow">Review · Thứ Ba 29/09/2026</span>
     <h1>Câu hỏi hội đồng dễ hỏi</h1>
-    <p class="lede">20 câu hỏi, mỗi câu kèm câu trả lời ngắn để nói, bằng chứng để chỉ vào, và cách nói cần tránh. Đề bài yêu cầu ứng viên <b>hiểu và bảo vệ được mọi quyết định thiết kế</b> và <b>ghi rõ trung thực những phần chưa hoàn thiện</b>, nên câu trả lời nào cũng kết thúc bằng một thứ cho xem được.</p>
+    <p class="lede">21 câu hỏi, mỗi câu kèm câu trả lời ngắn để nói, bằng chứng để chỉ vào, và cách nói cần tránh. Đề bài yêu cầu ứng viên <b>hiểu và bảo vệ được mọi quyết định thiết kế</b> và <b>ghi rõ trung thực những phần chưa hoàn thiện</b>, nên câu trả lời nào cũng kết thúc bằng một thứ cho xem được.</p>
   </header>
 
   <div class="controls" role="toolbar" aria-label="Lọc theo chủ đề">
@@ -89,7 +89,7 @@
     <button class="chip" id="t-eval" data-topic="eval" aria-pressed="false">Đánh giá</button>
     <button class="chip" id="t-scale" data-topic="scale" aria-pressed="false">Mở rộng</button>
     <button class="chip" id="t-limits" data-topic="limits" aria-pressed="false">Hạn chế</button>
-    <span class="count" id="count" aria-live="polite">20 câu hỏi</span>
+    <span class="count" id="count" aria-live="polite">21 câu hỏi</span>
     <button class="toggle" id="rehearse" aria-pressed="false">Luyện tập: ẩn câu trả lời</button>
   </div>
 
@@ -184,10 +184,16 @@
           <td class="avoid">"Mình tin dev không commit key."</td>
         </tr>
         <tr data-topic="eval">
-          <td class="q">Vì sao chỉ 68–69/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
-          <td class="answer" tabindex="0">68–69/73 là hệ thống hiện tại qua hai lần chạy sạch dưới judge-v2, và không prompt nào còn chứa nội dung bộ đánh giá; không chỉnh tay ca nào. Chấm tay là 69–70/73 (một lỗi của judge). Hai lần chạy chỉ khác nhau 1 ca, do mô hình 3B diễn đạt khác đi, nên con số trung thực là một khoảng. Cách ly 10/10, chọn tool 34/34, chấm bằng luật. Các ca còn trượt: hai câu có tiền đề sai mà hệ thống từ chối (quyết định sản phẩm, đang chờ team lead), một câu hỏi hai phần, và một câu từ chối tự diễn đạt (PR #14). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
-          <td class="evidence"><code>router-3b-run.md</code>, <code>rules-only-run.md</code>, <code>D-34</code>; <code>analysis.md</code></td>
-          <td class="avoid">"Tăng từ 63 lên 69." Hoặc đưa số của một lần chạy như thể nó chính xác tuyệt đối. Khác judge, khác prompt, khác bộ ca.</td>
+          <td class="q">Vì sao chỉ 69/73? Còn 63/71 là gì?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">69/73 là median của 3 lần chạy sạch trên hệ thống hiện tại (70, 69, 68), dưới judge-v2, không prompt nào còn chứa nội dung bộ đánh giá, và không chỉnh tay ca nào. Một lần chạy không đủ làm kết quả: dù temperature = 0, mô hình 3B vẫn diễn đạt khác nhau khoảng 29/73 câu giữa các lần. Chọn tool 34/34, từ chối đúng 12/12 và cách ly 10/10 giữ nguyên ở cả 3 lần, chấm bằng luật. Còn trượt: các câu có tiền đề sai mà trợ lý không đính chính (M01, M02, M04), là quyết định sản phẩm đang chờ team lead; và một lỗi của judge (M03). 63/71 là lần chạy D5 trước đó dưới judge-v1: một chế độ đo khác, giữ lại để tham khảo, không phải "trước và sau".</td>
+          <td class="evidence"><code>router-guards-run.md</code>, <code>held-out-and-three-runs.md</code>, <code>D-34</code></td>
+          <td class="avoid">"Tăng từ 63 lên 69." Hoặc đưa số của lần chạy tốt nhất. Khác judge, khác prompt, khác bộ ca; và một lần chạy có thể lệch tới ±3 ca.</td>
+        </tr>
+        <tr data-topic="eval">
+          <td class="q">Có bị overfit vào chính 73 ca của mình không?<span class="topic">Đánh giá</span></td>
+          <td class="answer" tabindex="0">Đã kiểm tra trực tiếp. Sau khi tinh chỉnh xong, mình viết một bộ held-out 44 ca, dùng những dữ kiện và cách hỏi mà bộ 73 ca không có, rồi commit đóng băng trước lần chạy đầu tiên. Median 3 lần chạy: 69/73 trên bộ đã tinh chỉnh, 41/42 trên các ca held-out chưa bị dùng để sửa, và mọi tiêu chí chấm bằng luật đều đầy đủ ở cả hai bộ. Vậy không thấy dấu hiệu overfit ở mức tổng thể. Bộ held-out còn tìm ra 2 lỗi router mà bộ 73 ca không thấy: một câu hỏi về phê duyệt bị từ chối (H17), và "restart server" bị trả lời bằng việc đọc trạng thái (H34). Cả hai đã được sửa bằng guard trong code, không phải bằng ví dụ trong prompt. Nói thẳng hai hạn chế: ngưỡng độ liên quan được hiệu chỉnh trên bộ retrieval vàng, và bộ held-out do chính nhóm viết, nên bước kiểm tra tiếp theo là một bộ do người khác viết.</td>
+          <td class="evidence"><code>evaluation/held_out_cases.jsonl</code>, <code>held-out-and-three-runs.md</code>, <code>router-guards-run.md</code>, <code>agent/intent.py</code></td>
+          <td class="avoid">"Không, điểm cao mà." Điểm cao trên chính bộ mình đã tinh chỉnh chính là dấu hiệu của overfit.</td>
         </tr>
         <tr data-topic="eval">
           <td class="q">Vì sao tin được LLM judge?<span class="topic">Đánh giá</span></td>

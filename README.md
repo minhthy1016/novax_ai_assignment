@@ -9,17 +9,21 @@ read, always with a citation, and can check a server, open a ticket or request a
 permissions, data isolation, approvals and the audit trail are enforced in code and in the
 database, never by prompting the model.
 
-> **Status (day 6 of 6, review 29 September 2026):** Tasks 1-7 and the scale proposal are
-> complete and tested end to end. Evaluation of the current system: **68–69/73 strict,
-> 69–70/73 read by hand across two clean runs** (judge-v2, no evaluation content in any
-> prompt), with isolation 10/10 and tool accuracy 34/34 in both. The frozen D5 run, 63/71 under judge-v1, is kept as a reference; the
-> two are different measurement regimes, not a before/after
-> ([details](#teaching-to-the-test-found-and-removed-the-harness-got-stronger-d-34)).
-> See [Current status](#current-status).
+> **Status (review 29 September 2026):** Tasks 1-7 and the scale proposal are complete and
+> tested end to end. Evaluation of the current system, three clean runs per suite
+> (judge-v2, no evaluation content in any prompt):
+> - **73-case suite:** median **69/73** (range 68–70).
+> - **Held-out suite:** written after tuning and frozen before it ran; median **41/42** on
+>   the cases no fix has looked at.
+> - **Both suites, every run:** isolation, tool accuracy and abstention were full marks.
+>
+> The frozen D5 run, 63/71 under judge-v1, is kept as a reference. It is a different
+> measurement regime, not a before/after
+> ([details](#evaluation)). See [Current status](#current-status).
 >
 > Three documents, three audiences: **this README** is how the system fits together ·
 > [`architecture.md`](architecture.md) is the engineering architecture ·
-> [`docs/decisions/`](docs/decisions/README.md) holds the 36 decision records with their
+> [`docs/decisions/`](docs/decisions/README.md) holds the 37 decision records with their
 > alternatives and measurements. Requirement-by-requirement evidence is in
 > [`docs/traceability.md`](docs/traceability.md).
 
@@ -99,11 +103,18 @@ sequenceDiagram
   user->>api: question or request (token)
   api->>api: authenticate, then build the access scope from DB permissions
   api->>llm: route this turn (small model)
+  api->>api: code guards correct the route (a write needs its record named,<br/>a question about rules is never refused, an unsupported action is)
   alt knowledge
     api->>kb: search within the scope (SQL filter + row-level security)
     kb-->>api: only permitted passages, or nothing
-    api->>llm: answer using these sources only
+    opt nothing passed the relevance gate
+      api->>llm: judge: do the near misses answer the question?
+    end
+    api->>llm: answer using these sources only (+ summary of earlier turns)
     llm-->>api: answer with citations
+    opt no citation, or "the sources do not cover"
+      api->>llm: try once more on a larger local model
+    end
     api->>api: validate citations, abstain if unsupported
   else tool
     api->>api: validate arguments, check permission
@@ -118,8 +129,10 @@ sequenceDiagram
   api-->>user: answer, citations, tool result
 ```
 
-If nothing relevant is found, the assistant says so **without calling a model** — an
-unsupported answer is not possible on that path.
+If nothing passes the relevance gate, a judge first reads the passages just under it. If
+none of them answers the question, the assistant says so, with what the user can do next
+(rephrase, upload, or raise a knowledge-gap ticket), and **the answering model is never
+called**. An unsupported answer is not possible on that path.
 
 ### End-to-end: a question
 
@@ -136,18 +149,25 @@ sequenceDiagram
 
   user->>api: POST /api/chat (Bearer JWT)
   api->>db: load user, check token's user + role, build AccessScope
-  api->>db: save the question, load conversation history
+  api->>db: save the question, load the rolling summary + recent turns (token budget)
   api->>gw: embed question (nomic-embed-text, local)
   api->>db: set_config(scope) + vector and full-text search, one transaction
   db-->>api: only rows the scope allows (SQL filter + RLS)
   api->>api: fuse (RRF), relevance gate, collapse to top-4 sections
-  alt nothing relevant
-    api-->>user: fixed "couldn't find this" answer, no model call
+  opt gate admitted nothing
+    api->>gw: judge (router model) reads up to 3 near misses (0.50-0.60)
+    gw-->>api: passage numbers that answer the question, or none
+  end
+  alt still nothing
+    api-->>user: "couldn't find this" + what to do next + knowledge-gap ticket offer
   else sources found
     api->>gw: grounded prompt, sources as escaped data, egress allowed only without confidential text
     gw->>llm: chosen model first, others as fallback
     llm-->>gw: answer with [n] citation markers
     gw->>db: usage row per attempt (tokens, latency, cost, outcome)
+    opt uncited, or says the sources do not cover part (D-33)
+      api->>gw: same prompt once on llama3.1-8b; keep it only if it is cited
+    end
     api->>api: keep only citations that point at retrieved sources
     api->>db: save answer + citations
     api-->>user: answer, citations (title, version, section), model, usage
@@ -239,8 +259,12 @@ Arguments, results and logs are redacted; provider keys live only in environment
 | Persistent memory (inspect and delete) | ✅ |
 | Per-caller rate limiting on model-backed routes | ✅ |
 | Evaluation suite (73 cases; the frozen D5 run used 71; LLM judge, control baseline) | ✅ [report](evaluation/reports/evaluation.md) · [analysis](evaluation/reports/analysis.md) |
-| No evaluation content in any prompt; three separate graders; prompt hashes in every report | ✅ [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) |
-| A skill that writes only runs when the request names its record | ✅ D-34 (the T08 fix) |
+| Held-out suite (44 cases, frozen before it ran) and three-run medians | ✅ [results](evaluation/reports/held-out-and-three-runs.md) |
+| No evaluation content in any prompt; three separate graders; prompt and suite hashes in every report | ✅ [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) |
+| Router guards in code: a write needs its record named (T08); a question about rules is never refused (H17); an unsupported action is refused, not answered with a status read (H34) | ✅ D-34 · [router-guards-run](evaluation/reports/router-guards-run.md) |
+| Answer escalation to a larger local model; knowledge-gap ticket offered when nothing answers | ✅ [D-33](docs/decisions/D-33-answer-escalation.md) |
+| Near misses reviewed by a judge before abstaining | ✅ [gate-review-run](evaluation/reports/gate-review-run.md) |
+| Conversation summary of older turns sent to the model (summarised on-box only) | ✅ `memory.py` |
 | Production SSO / OIDC | 🟡 dev token issuer stands in |
 | Scale proposal (5k employees, 1M documents, GPU cluster) | ✅ [D-60](docs/decisions/D-60-scale-proposal-aws.md); figures generated by [`evaluation/capacity.py`](evaluation/capacity.py) from measured and assumed inputs - not load-tested |
 | AWS deployment itself | 🟡 designed, not built: the repository deploys with Docker Compose |
@@ -508,7 +532,8 @@ type and latency only.
 - Every chat message is grounded: retrieval runs in the caller's access scope, and the
   answer cites sources like
   `Incident Response Runbook (KB-ENG-003 v1, §Service playbooks › Payment API ¶13–14)`. If
-  nothing relevant is found the assistant says so, without calling a model.
+  nothing passes the relevance gate, a judge reviews up to three near misses. If it admits
+  none, the assistant says so without calling the answering model.
 - Confidential documents go into a separate index and are answered by local models only.
 - Chunking is parent-child: **retrieve narrowly, reason broadly, cite precisely.** ~64-token
   children are embedded and matched; the whole section (≤256 tokens, never crossing a
@@ -579,7 +604,8 @@ names. Run it with `make eval` (needs `ollama pull qwen2.5:7b` for the judge) or
 
 | File | What is in it | Used by |
 |---|---|---|
-| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **73 evaluation cases** — the answering suite (the frozen D5 run below used the first 71; C04–C05 were added after it, for a router fix). One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/cases.jsonl`](evaluation/cases.jsonl) | **73 evaluation cases**: the answering suite, and the one the system was tuned on (the frozen D5 run below used the first 71; C04–C05 were added after it, for a router fix). One JSON object per line: `case_id`, `category`, `actor_id`, `prompt`, `expected_sources`, `forbidden_sources`, `expected_tool`, `expected_arguments`, `expected_outcome`, `reference_facts`, `must_not_contain` | `make eval` |
+| [`evaluation/held_out_cases.jsonl`](evaluation/held_out_cases.jsonl) | **44 held-out cases (H01–H44)**, same format, same eight categories. Written after tuning, on facts and phrasings the 73 cases never use, and frozen in a commit before it first ran (hash `a3e7e30584e7`). H17 and H34 have since been used for a fix, so they no longer count as held out | `run_eval --cases evaluation/held_out_cases.jsonl --report <name>.md` |
 | [`evaluation/retrieval_cases.jsonl`](evaluation/retrieval_cases.jsonl) | **41 retrieval gold cases** — question plus the exact source text that answers it (`evidence`, or `evidence_terms` for facts in table cells) | `make test-eval`, `chunking_eval.py` |
 | [`evaluation/answer_eval.py`](evaluation/answer_eval.py) | the six must-abstain questions used by the fast lexical scorer | `make test-eval` |
 
@@ -592,30 +618,46 @@ model involved. Only prose is judged by a model, and the judge is a **different 
 (Qwen judging Llama), called **outside** the pipeline, and **local**, so judging a
 confidential answer never sends it off the machine.
 
-**Headline: the current system**, measured twice from a clean stack under judge-v2, after
-evaluation content was removed from every prompt (D-34), with the router and write-skill
-fixes: the router A/B run ([`router-3b-run.md`](evaluation/reports/router-3b-run.md), 68/73)
-and the final pre-review run ([`final-pre-review-run.md`](evaluation/reports/final-pre-review-run.md),
-69/73). The range is the honest figure: the two runs differ by one case (K18), on how the 3B
-model worded its answer. By hand, the one difference from strict is M03, a correct answer
-the judge calls contradicted. The failures left are two
-false-premise abstentions (M01, M04), a two-part question (K18) and a refusal worded in the
-model's own words (X06); PR #14 addresses the last two.
+**Headline: the current system**, measured three times per suite on a clean stack
+(`make reset && make up && make ingest-inline`), under judge-v2, with no evaluation content in
+any prompt. One run is not a result: at temperature 0 the local 3B model still words about 29
+of 73 answers differently from run to run, so a single run can land anywhere from 64 to 70.
+The figure to quote is the **median of three**.
+
+The held-out suite answers the question "did we overfit to the 73 cases?". Its median is one
+case below the tuned suite, within noise, and every axis graded by code holds on both.
+Reports:
+- [`held-out-and-three-runs.md`](evaluation/reports/held-out-and-three-runs.md), before the
+  router guards;
+- [`router-guards-run.md`](evaluation/reports/router-guards-run.md), the current system.
 
 ```text
-73-case evaluation — current system (judge-v2, two clean runs)
+Evaluation — current system (judge-v2, three clean runs per suite)
 
-Strict correctness:        68–69/73 (93.2–94.5%)
-Manual review:              69–70/73 (94.5–95.9%)
-
-Isolation:                  10/10 in both runs
-Tool accuracy:              34/34 in both runs
-Abstention:                 11/12 in both runs
-Citation validity:          36/36 · 38/38
-Exact citation support:     31/35 · 34/38
+                               73-case suite (tuned on)   Held-out (42 untouched cases)
+Strict correctness, per run:   70 · 69 · 68               40 · 41 · 41
+Median:                        69/73 (94.5%)              41/42 (97.6%)
+Tool accuracy:                 34/34 every run            15/15 every run
+Abstention / refusal:          12/12 every run            9/9 every run
+Isolation:                     10/10 every run            6/6 every run
+Retrieval, expected in top-4:  37/39 every run            22/22 every run
+Citation validity:             100% every run             100% every run
+End-to-end p50 / p95:          1.2 s / 7.3–7.8 s          1.0 s / 3.8–5.1 s
+Tokens per case (mean):        527–564                    470–487
 
 Reference - frozen D5 run (judge-v1, 71 cases): 63/71 strict, 66/71 by hand
 ```
+
+The p95 is higher than before D-33: an answer with a warning sign is retried once on the 8B
+model, which on a 16 GB laptop also means swapping models in memory.
+
+**What still fails:**
+- **False premises: M01, M02, M04 and H27.** The assistant abstains or answers without
+  correcting the premise. It is safe, but a colleague would correct you; this is a product
+  decision pending with the team lead.
+- **Judge errors: M03 and H12.** Both are correct answers that open with "No, …".
+- **E09 (occasionally):** a correct refusal that contains the guarded phrase
+  "system prompt".
 
 **Reference: the frozen D5 result.** One clean, reproducible run: `main` at `7c4236f`, stack reset,
 image rebuilt, the sample documents re-indexed, then the full suite
@@ -717,8 +759,9 @@ got clearly stronger:**
 
 Details: [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md),
 [`analysis.md`](evaluation/reports/analysis.md#teaching-to-the-test-found-and-removed-d-34).
-The headline is the current system's 68–69/73 across two clean runs under judge-v2; the D5
-run, 63/71 under judge-v1, is kept as the reference it was measured against.
+The headline is the current system's median of three clean runs under judge-v2 (69/73, with
+the held-out suite beside it); the D5 run, 63/71 under judge-v1, is kept as the reference it
+was measured against.
 
 **The control.** The same model with no retrieval and no policy states 16% of the reference
 facts (vs 87% through the pipeline), produces no citations, and answers **5 of 5** questions
@@ -730,9 +773,9 @@ that nothing it says can be checked, and it has no notion of who is asking.
 ```bash
 make install            # local venv via uv
 make lint               # ruff + mypy (strict)
-make test               # unit tests (207), no services needed
-make test-integration   # integration tests (63) against the running stack
-make test-security      # security tests (107): authz, isolation, injection, audit, egress
+make test               # unit tests (244), no services needed
+make test-integration   # integration tests (66) against the running stack
+make test-security      # security tests (113): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```
@@ -740,7 +783,7 @@ make test-all           # everything
 `make test-integration`, `make test-security` and `make test-eval` need `make up` and
 `make ingest` first. Security tests are tagged with a pytest marker and span both suites, so
 `make test-security` runs the unit-level policy tests and the end-to-end ones together;
-`uv run pytest -m "security and not integration"` runs only the 81 that need no services.
+`uv run pytest -m "security and not integration"` runs only the 86 that need no services.
 
 Deeper evaluation runs (they need Ollama, and the chunking comparison also needs the Docling
 export):
@@ -783,16 +826,37 @@ architecture.md      ✦ engineering view: request path, module map, security ta
 docker-compose.yml   ✦ the whole stack: api, worker, postgres+pgvector, redis (+ profiles)
 .env.example         ✦ every setting with safe defaults; no real credentials
 src/opsassist/       ✦ application code
-  api/                 HTTP routes and contracts (chat, stream, search, models, documents,
-                       conversations, memory, actions, audit, health, metrics)
-  agent/               LangGraph orchestration and the answering services
-  gateway/             model catalog, routing, retry/fallback, egress control, usage
+  main.py              app factory: middleware, routers, gateway, agent graph
+  auth.py · config.py  role-bound JWT → Principal · typed settings (secrets as SecretStr)
+  middleware.py        request ID, JSON access log, HTTP metrics
+  ratelimit.py         per-caller token buckets in Redis (D-61)
+  rag.py               grounded prompt, citation checks, abstention, gate-review prompt
+  memory.py            preference allowlist · conversation window + rolling summary
+  conversations.py     conversation persistence and ownership
+  worker.py            Dramatiq ingestion worker, retries, dead-letter queue
+  api/                 HTTP routes and contracts: chat + stream, knowledge search, models,
+                       documents, conversations, memory, actions, tickets, audit, health, ui
+  agent/
+    graph.py             LangGraph: route (small talk · knowledge · tool · refuse), approvals
+    intent.py            router guards read from the message's form (H17, H34)
+    service.py           knowledge answering: gate review, escalation (D-33), gap ticket
+    checkpointer.py      Postgres checkpoints, so a pending approval survives a restart
+  gateway/             model catalog, routing, retry/fallback, circuit breaker, egress, usage
   providers/           one adapter per vendor: NIM, Anthropic, Ollama, deterministic mock
-  knowledge/           parsing, chunking, ingestion, retrieval, upload policy
-  policy/              access scope and the hash-chained audit log
-  tools/               typed tool registry and the executor that authorizes them
+  knowledge/           parsing, parent-child chunking, ingestion, hybrid retrieval, upload
+  policy/              access scope from DB permissions · hash-chained audit log
+  tools/               registry (typed schemas, skill cards, guards) · executor (authorize,
+                       pending approval, execute once)
+  db/                  SQLAlchemy models and sessions
 tests/               ✦ unit/ (no services) · integration/ (compose stack) · `security` marker
-evaluation/          ✦ gold sets, evaluation scripts, reports, alternative chunkers
+evaluation/          ✦ suites, harness, judge, reports
+  cases.jsonl          73-case suite (tuned on)
+  held_out_cases.jsonl 44-case held-out suite (frozen before it ran)
+  retrieval_cases.jsonl · judge_labels.jsonl   retrieval gold set · 39 hand labels
+  run_eval.py · judge.py · judge_drift.py      harness · three graders · judge vs hand labels
+  capacity.py          scale-proposal sizing (D-60)
+  reports/             one report per measured change; per-run reports in subfolders
+  runs/                raw JSON per run (gitignored)
 sample_data/         ✦ fictional seed data from the brief, plus candidate-added documents
 docs/                ✦ decisions/ (ADRs) · traceability.md (requirement → code → test) · brief/
 migrations/            Alembic migrations, one per feature, in build order
@@ -808,10 +872,17 @@ Dockerfile             one image, used by both the API and the worker
 Honest list of what this build does **not** do, or does only partly. Each one is real and
 checkable in the code.
 
-**What the evaluation found (71 cases, read by hand in `evaluation/reports/analysis.md`)**
+**What the evaluation found (73-case suite and held-out suite, three runs each)**
 - **The assistant abstains or hedges instead of correcting a false premise** (M01, M02,
-  M04). "Since the incident lasted three hours…" gets "I couldn't find this" rather than "it
-  was 18 minutes". Safe, but a colleague would correct you.
+  M04, and on the held-out suite H27). "Since the incident lasted three hours…" gets "I
+  couldn't find this" rather than "it was 18 minutes". Safe, but a colleague would correct
+  you.
+- **Single runs are noisy.** At temperature 0 the 3B model words about 29 of 73 answers
+  differently between runs, so one run lands anywhere from 64 to 70. Scores are reported
+  as the median of three.
+- **The held-out suite is no longer fully held out.** H17 and H34 were fixed after they were
+  seen, and it was written by the same team that saw the 73-case failures. A suite written
+  by someone else is the next independent check.
 - **Partial answers cost some precision.** Two-part questions where the documents cover one
   part now get that part, cited, plus a note on what is not covered (K18). A 3B model
   sometimes adds that note to questions it answered in full, and once (K08) the note is
@@ -821,12 +892,18 @@ checkable in the code.
   it, nothing corrects it at runtime.
 - **An answer can arrive uncited** when the model writes no marker at all (E12). The console
   marks it and the eval counts it as a miss; nothing blocks it.
-- **A small router without worked examples is weaker** (D-34): a bare "Check api-prod-02."
-  can go to knowledge. Writing skills are held back in code when the request never names
-  their record (this is what stopped T08 from opening a ticket nobody asked for).
-- **The judge is not the final word**: in the final run it marked two correct answers as
-  contradicted (M03, M05). Every failing case prints its answer so a reader can overrule the
-  judge; scored by hand the final run is 66/71 rather than 63/71.
+- **A small router without worked examples is weaker** (D-34), so three guards in code
+  correct it:
+  - a skill that writes is held back unless the request names its record (T08: no ticket
+    nobody asked for);
+  - a question about the rules is never refused (H17);
+  - an instruction no skill performs is refused rather than answered with a status read (H34).
+
+  The guards read the message's form (question words, leading verbs), so a phrasing outside
+  them still depends on the router.
+- **The judge is not the final word.** It still calls some correct answers that open with
+  "No, …" contradicted (M03, H12), and it cannot quote others, so their verdicts are
+  discarded. Every failing case prints its answer so a reader can overrule the judge.
 - The answering model in these runs is a 3B local model - a floor, not a target.
 - The scale proposal ([D-60](docs/decisions/D-60-scale-proposal-aws.md)) is not load-tested.
   Its figures come from `evaluation/capacity.py`: corpus density and prompt size are measured
@@ -852,6 +929,11 @@ checkable in the code.
   abstention on those depends on the grounded prompt rather than a threshold.
 - Retrieval uses the latest message only; a follow-up like "and on Thursday?" is not
   rewritten into a standalone query.
+- **Egress is decided per turn.** The check compares only the current turn's sources against
+  the egress rule. If an earlier turn answered from a confidential document, that answer is
+  in the history (and possibly the summary) that the next turn sends. The summary itself is
+  only written on-box, but a later turn routed to a hosted model could carry it. Tracking the
+  conversation's highest classification is the fix.
 - Citations name the parent section; the exact matched passage is in the snippet.
 - Model wording varies between runs: in two live runs of E10, one answer opened with "No,"
   where the source only says "not confirmed".
