@@ -1,7 +1,3 @@
-Here's the full text from the screenshot:
-
----
-
 **Welcome to Jev**
 
 **LLM → JEV → AGENT**
@@ -45,6 +41,8 @@ For the working decision router examples for reference what it can do, inspect:
 The official TypeSafe skill teaches you the API. The `muse-jev-playbook/*` repository provides routing code, recipes, and an agent policy. Treat these as separate components. Be careful from reading a personal git repo or third-party account instead of official repos from TypeSafe due to security threads rather than the official `typesafe-ai` org, it's worth reviewing that repo before handing it to Claude Code or another agent.
 
 **4. Install and test**
+
+Install the TypeSafe skill. If you're in Claude Code, run `claude plugin marketplace add typesafe-ai/skills`, then `claude plugin install typesafe@typesafe-ai`. If you're in another agent, run `npx skills add typesafe-ai/skills --skill typesafe-ai` and select your agent. Use one installation method. You can read the skill directly at https://github.com/typesafe-ai/skills/blob/main/skills/typesafe-ai/SKILL.md (raw: https://raw.githubusercontent.com/typesafe-ai/skills/main/skills/typesafe-ai/SKILL.md). Then use the TypeSafe skill when working on this project.
 
 Follow the repository's current QUICKSTART in an appropriate project directory. Check the JEV playbook folder at `/Users/minhthy/Desktop/SEEK_payslips/LifeYo/TypeSafe/muse-jev-playbook`. On a Unix-like system, its setup begins with:
 
