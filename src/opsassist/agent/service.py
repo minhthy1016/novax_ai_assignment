@@ -89,8 +89,8 @@ def greeting_reply(principal: Principal) -> AnswerResult:
 
 
 REFUSAL = (
-    "I can't do that. I have no tool for deployments or for bypassing an approval, and I "
-    "only act through tools that check your permissions first."
+    "I can't do that: none of my tools does it, and nothing can skip an approval or a "
+    f"permission check. {CAPABILITIES}"
 )
 
 

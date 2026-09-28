@@ -33,6 +33,7 @@ from langgraph.types import interrupt
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from opsassist.agent import service
+from opsassist.agent.intent import asks_about_rules, asks_for_unsupported_action
 from opsassist.auth import Principal
 from opsassist.config import Settings
 from opsassist.gateway.gateway import CallContext, GatewayError, LLMGateway
@@ -188,6 +189,22 @@ def build_graph(deps: AgentDeps, checkpointer: BaseCheckpointSaver[Any] | None =
             # answered from the documents instead, or abstains.
             log.info("agent_route_overruled", tool=tool, user=state["user_id"], to="knowledge")
             route, tool, args = "knowledge", None, {}
+        if route == "refuse" and asks_about_rules(state["question"]):
+            # A question about the rules ("who may approve ...?") is not a request to break
+            # them. The knowledge path has no tools, so this can only answer or abstain.
+            log.info("agent_route_overruled", route=route, user=state["user_id"], to="knowledge")
+            route, tool, args = "knowledge", None, {}
+        if (
+            route == "tool"
+            and tool in TOOLS
+            and TOOLS[tool].effect == "reads data"
+            and asks_for_unsupported_action(state["question"])
+        ):
+            # An instruction to change a system (restart, delete, deploy) matched to the
+            # nearest read-only skill: a status read would look like an answer and ignore
+            # the request. Say it cannot be done instead.
+            log.info("agent_route_overruled", tool=tool, user=state["user_id"], to="refuse")
+            route, tool, args = "refuse", None, {}
         if route == "tool" and tool is not None and reads_with_invalid_arguments(tool, args):
             # A read-only skill with arguments its schema rejects means the question was
             # misread (K08): answer it from the documents instead of showing a tool error.
