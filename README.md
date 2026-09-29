@@ -1042,8 +1042,11 @@ checkable in the code.
   pending-action machinery as VPN profiles.
 - Object storage for uploads, a shared circuit breaker, and a read-only database role for
   the API.
-- Richer observability: tool-call metrics, per-department cost analytics, and traces linked
-  to evaluation runs.
+- Richer observability: per-department cost analytics, and traces linked to evaluation runs.
+- A probabilistic decision layer (Jev by TypeSafe) around the router and the answer checks,
+  starting in shadow mode. It would only choose between paths that are already safe, and
+  would never see confidential context. Proposal:
+  [`docs/JEV_proposal/jev-proposal.html`](docs/JEV_proposal/jev-proposal.html).
 
 ## Scale to 5,000 employees, 1M documents, 100 concurrent requests, a GPU cluster on (AWS) : 
 Please references to [D-60](docs/decisions/D-60-scale-proposal-aws.md)

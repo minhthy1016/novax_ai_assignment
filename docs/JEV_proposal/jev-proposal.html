@@ -1,0 +1,302 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jev Decision Layer Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F5F6F8; --surface: #FFFFFF; --ink: #18202C; --muted: #5A6474;
+    --rule: #DCE1E8; --accent: #2E5A87; --accent-soft: #E6EDF5;
+    --keep: #2F6B4F; --keep-soft: #E5F1EA;
+    --risk: #A8402B; --risk-soft: #F8E9E5;
+    --wait: #8A6212; --wait-soft: #F6EEDC;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+      --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+      --keep: #86C7A4; --keep-soft: #18281F; --risk: #E28D78; --risk-soft: #2E1E1A;
+      --wait: #E0B866; --wait-soft: #2B2415; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #12161C; --surface: #1A2028; --ink: #E4E8EE; --muted: #97A1B0;
+    --rule: #2C3440; --accent: #8DB4DC; --accent-soft: #1F2B38;
+    --keep: #86C7A4; --keep-soft: #18281F; --risk: #E28D78; --risk-soft: #2E1E1A;
+    --wait: #E0B866; --wait-soft: #2B2415; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.55 var(--sans); }
+  .page { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; display: grid; gap: 34px; }
+  header { display: grid; gap: 10px; }
+  .eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; font-weight: 600; text-wrap: balance; }
+  h2 { margin: 0 0 4px; font-size: 19px; font-weight: 600; text-wrap: balance; }
+  h2 .n { font: 500 12px/1 var(--mono); color: var(--accent); margin-right: 8px; letter-spacing: .06em; }
+  p { margin: 0; }
+  .lede { max-width: 72ch; color: var(--muted); }
+  .lede b, .intro b { color: var(--ink); font-weight: 600; }
+  section { display: grid; gap: 12px; }
+  .intro { max-width: 78ch; color: var(--muted); }
+  .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; }
+  .stat .k { font: 500 11px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font-size: 15px; font-weight: 600; }
+  .stat .d { font-size: 13.5px; color: var(--muted); }
+  .flow { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+  .flow pre { margin: 0; padding: 18px 20px; font: 400 12.5px/1.55 var(--mono); color: var(--ink); }
+  .flow .j { color: var(--accent); font-weight: 500; }
+  .flow .c { color: var(--keep); font-weight: 500; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font: 500 11.5px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+       color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--rule); background: var(--surface); }
+  td { vertical-align: top; padding: 13px 14px; border-bottom: 1px solid var(--rule); font-size: 14px; }
+  tr:last-child td { border-bottom: 0; }
+  td.name { font-weight: 600; min-width: 170px; }
+  td.name small { display: block; margin-top: 4px; font: 400 12px/1.4 var(--sans); color: var(--muted); }
+  code, .m { font-family: var(--mono); font-size: 12.5px; }
+  .type { display: inline-block; font: 500 11px/1 var(--mono); padding: 4px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); margin: 0 4px 4px 0; }
+  .tag { display: inline-block; font: 500 11px/1 var(--mono); padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+  .tag.ok { background: var(--keep-soft); color: var(--keep); }
+  .tag.limit { background: var(--wait-soft); color: var(--wait); }
+  .tag.no { background: var(--risk-soft); color: var(--risk); }
+  ul.tight { margin: 0; padding-left: 18px; }
+  ul.tight li + li { margin-top: 3px; }
+  .note { border-left: 3px solid var(--wait); background: var(--wait-soft); padding: 12px 14px; border-radius: 0 8px 8px 0; font-size: 14px; max-width: 86ch; }
+  .note.risk { border-color: var(--risk); background: var(--risk-soft); }
+  a { color: var(--accent); }
+  footer { color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+  @media (max-width: 760px) {
+    td.name { min-width: 130px; }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <span class="eyebrow">Proposal · after the 29 September 2026 review · not built</span>
+    <h1>Jev as a decision layer for OpsAssist</h1>
+    <p class="lede">A proposal to put <b>Jev by TypeSafe</b>, a hosted API that answers typed decision
+      questions with probabilities, around the assistant's existing router and answer checks. Jev would
+      <b>rank and choose between paths that are all already safe</b>. Authorization, isolation, approvals,
+      egress and audit stay in code and in the database, as the brief requires.</p>
+  </header>
+
+  <section>
+    <div class="status">
+      <div class="stat"><span class="k">Status</span><span class="v">Proposal only</span><span class="d">No Jev code, key or dependency is in this repository.</span></div>
+      <div class="stat"><span class="k">Baseline to beat</span><span class="v">69/73 · 41/42</span><span class="d">Median of three clean runs: tuned suite · held-out cases no fix has seen.</span></div>
+      <div class="stat"><span class="k">Hard constraint</span><span class="v">D-15 egress</span><span class="d">Anything sent to Jev leaves the machine. Confidential context never may.</span></div>
+      <div class="stat"><span class="k">Earliest start</span><span class="v">After the review</span><span class="d">Shadow mode first, on its own branch.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">01</span>What Jev is, as far as we have read</h2>
+    <p class="intro">From the playbook code we read (<code>src/jev_client.py</code>, <code>src/router.py</code>):</p>
+    <ul class="tight intro">
+      <li><code>TypeSafeClient.system_one(state, questions)</code> takes a compact <b>state</b> and a set of typed <b>questions</b>.</li>
+      <li>It answers each question with one of three types:
+        <ul class="tight">
+          <li><span class="type">Choice</span> picks a label;</li>
+          <li><span class="type">Score</span> rates on a scale;</li>
+          <li><span class="type">Noul</span> gives the probability of yes or no.</li>
+        </ul>
+      </li>
+      <li>A router of our own maps those answers to actions using confidence thresholds.</li>
+    </ul>
+    <p class="intro">The playbook's default policy:</p>
+    <ul class="tight intro">
+      <li>≥ 0.80: act on the decision;</li>
+      <li>0.50–0.79: treat it as a recommendation;</li>
+      <li>&lt; 0.50: escalate to a human;</li>
+      <li><code>shadow</code> mode logs the advice without acting on it.</li>
+    </ul>
+    <div class="note"><b>Sources.</b> The official instructions are <code>docs.typesafe.ai</code> and
+      <code>github.com/typesafe-ai/skills</code>. The playbook (<code>github.com/Bodila51/muse-jev-playbook</code>)
+      is a personal repository with a single commit. Treat it as a reference, not a dependency, until it is
+      reviewed. Latency, data retention and whether an on-premises deployment exists are <b>not yet verified</b>.
+      Those three facts decide how much of this proposal is possible.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>Where it sits in the request path</h2>
+    <div class="flow"><pre>User ─▶ Auth + AccessScope from DB permissions                      <span class="c">(code, unchanged)</span>
+          │
+          ▼
+  <span class="j">① Jev dispatcher</span>  sends: question + skill cards only (no history, no documents)
+     Choice intent · Noul needs_clarification · Noul bypass_attempt · Score complexity
+     p ≥ 0.80 → use Jev's route │ 0.50–0.79 → compare with the 3B router, take the safer
+     p &lt; 0.50, timeout or error → the current 3B router                   <span class="c">(fallback)</span>
+          │
+          ▼
+  Router guards: write needs its record named · rules question → knowledge ·
+                 unsupported action → refuse · invalid read args → knowledge   <span class="c">(code, unchanged)</span>
+          │
+   ┌──────┴──────────────┬─────────────────────┐
+   ▼                     ▼                     ▼
+ Tool path            Knowledge path         Refuse / clarify
+ schema · permission  retrieval + RLS        fixed text, no model
+ approval · audit     answer (3B)
+ <span class="c">(unchanged)</span>             │
+                         ▼
+  <span class="j">② Jev verifier</span>  only when the conversation may leave the box (allows_egress)
+     Noul answers_question · Noul accepts_false_premise · Noul claims_beyond_sources
+     pass → user │ fail → escalate to 8B / correct the premise / abstain + gap ticket
+     confidential conversation → skip Jev, keep today's local checks
+          │
+          ▼
+  Citation validation → audit record → user                            <span class="c">(code, unchanged)</span></pre></div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>Proposal: decision points</h2>
+    <p class="intro">Each row is one question Jev would answer. The <b>fallback</b> column is what the assistant
+      does today, and what it keeps doing whenever Jev is off, slow, unsure or unavailable.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Decision point</th><th>Jev question</th><th>Sent to Jev</th><th>Action by confidence</th><th>Fallback (today)</th><th>Egress</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="name">① Route the request<small>replaces a label with a probability</small></td>
+            <td><span class="type">Choice</span> intent: knowledge · tool:&lt;skill&gt; · refuse · clarify</td>
+            <td>Question text and skill cards</td>
+            <td>≥ 0.80 use it · 0.50–0.79 agree with the router or take the path with fewer rights · &lt; 0.50 router decides</td>
+            <td>3B router, then the code guards</td>
+            <td><span class="tag limit">question only</span></td>
+          </tr>
+          <tr>
+            <td class="name">② Ask back instead of guessing</td>
+            <td><span class="type">Noul</span> needs_clarification</td>
+            <td>Question text</td>
+            <td>≥ 0.80 ask one clarifying question · otherwise continue</td>
+            <td>None: the assistant answers or abstains</td>
+            <td><span class="tag limit">question only</span></td>
+          </tr>
+          <tr>
+            <td class="name">③ Spot a bypass attempt<small>a second opinion for the refuse route</small></td>
+            <td><span class="type">Noul</span> bypass_attempt</td>
+            <td>Question text</td>
+            <td>Can only move a request <b>towards</b> refuse or knowledge, never towards a tool</td>
+            <td>Router rule 4 + <code>asks_about_rules</code> guard</td>
+            <td><span class="tag limit">question only</span></td>
+          </tr>
+          <tr>
+            <td class="name">④ Escalate a weak answer</td>
+            <td><span class="type">Noul</span> answers_question · <span class="type">Score</span> confidence</td>
+            <td>Question, answer, cited passages</td>
+            <td>&lt; 0.50 retry once on the 8B model (D-33) · otherwise return</td>
+            <td>Regex: uncited or "not covered"</td>
+            <td><span class="tag no">not for confidential</span></td>
+          </tr>
+          <tr>
+            <td class="name">⑤ Correct a false premise<small>the largest remaining failure: M01, M04, H27</small></td>
+            <td><span class="type">Noul</span> accepts_false_premise</td>
+            <td>Question, answer, cited passages</td>
+            <td>≥ 0.80 re-answer with the premise corrected, cited · otherwise return</td>
+            <td>Abstain or answer without correcting</td>
+            <td><span class="tag no">not for confidential</span></td>
+          </tr>
+          <tr>
+            <td class="name">⑥ Judge the near misses<small>the gate review of PR #19</small></td>
+            <td><span class="type">Choice</span> which passage answers, or none</td>
+            <td>Question and up to 3 passages</td>
+            <td>Admit only passages chosen at ≥ 0.80</td>
+            <td>Local 3B judge</td>
+            <td><span class="tag no">not for confidential</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="intro">Rows ④–⑥ send document text. They run only when <code>allows_egress</code> passes for the
+      <b>whole conversation</b> (migration 0009). Every other conversation keeps today's local checks. A deployment
+      that allows no egress at all turns Jev off with one setting.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>What Jev never decides</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Control</th><th>Where it stays</th><th>Why Jev is kept out</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Who may read what</td><td>AccessScope, SQL filter + Postgres RLS (D-22)</td><td>The brief: isolation through prompts or models alone is unacceptable</td></tr>
+          <tr><td class="name">Whether a tool may run</td><td>Typed schema + permission check (D-29)</td><td>A probability is not an authorization</td></tr>
+          <tr><td class="name">Sensitive actions</td><td>Two-person approval pinned by an action hash (D-31)</td><td>Needs an explicit, accountable human</td></tr>
+          <tr><td class="name">What may leave the box</td><td>Conversation-wide egress rule (D-15)</td><td>Jev is itself an egress destination</td></tr>
+          <tr><td class="name">Citations and audit</td><td>Citation validation, hash-chained audit (D-25, D-32)</td><td>Evidence must be checked, not estimated</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span>How it would be built</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Piece</th><th>Where</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Decision provider</td><td><code>gateway/</code></td><td>A <code>DecisionProvider</code> protocol with a <code>TypeSafeDecisionProvider</code> adapter and a deterministic mock for CI. It gets the same timeout, circuit breaker and per-attempt usage records as the chat providers (D-11, D-14).</td></tr>
+          <tr><td class="name">Dispatcher</td><td><code>agent/graph.py::classify</code></td><td>Asks Jev before the router. The route, the probability and the fallback taken are logged and audited. The code guards still run afterwards.</td></tr>
+          <tr><td class="name">Verifier</td><td><code>agent/service.py</code></td><td>Replaces <code>escalation_reason()</code> for conversations that may leave the box. Adds the premise-correction path.</td></tr>
+          <tr><td class="name">Mode switch</td><td><code>config.py</code></td><td><code>OPSASSIST_DECISION_MODE=off|shadow|active</code>, default <code>shadow</code>. <code>TYPESAFE_API_KEY</code> comes from the environment as a <code>SecretStr</code>; it is never committed and never logged.</td></tr>
+          <tr><td class="name">State sent</td><td>built in code</td><td>Question, skill names and, where egress allows, the answer and cited passages. Never history, user identity, other departments' titles or anything confidential.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span>Rollout and exit criteria</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Phase</th><th>What happens</th><th>Move on only if</th></tr></thead>
+        <tbody>
+          <tr><td class="name">0 · Verify</td><td>Read the official TypeSafe docs; confirm latency, data retention and whether an on-premises deployment exists; review the playbook before using any of it.</td><td>Retention and egress are acceptable to the team lead</td></tr>
+          <tr><td class="name">1 · Shadow</td><td>Jev answers every decision point; the assistant acts exactly as today; both decisions are logged side by side.</td><td>Three clean runs of each suite show Jev agreeing with the correct outcome more often than the current path, <b>on the held-out suite</b></td></tr>
+          <tr><td class="name">2 · Active dispatcher</td><td>Rows ①–③ only: question text, no documents.</td><td>Held-out median at least 41/42 with no case newly failing; tool 34/34, abstention 12/12, isolation 10/10 unchanged; calibration holds (p≈0.8 is right ≈80% of the time)</td></tr>
+          <tr><td class="name">3 · Active verifier</td><td>Rows ④–⑥, for conversations that may leave the box.</td><td>False-premise cases improve without new wrong answers; p95 stays within an agreed budget (today ≈ 7 s)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="intro">A fresh held-out suite, ideally written by someone who has not seen the failures, is needed
+      before phase 2. The current one has already been used for two fixes (H17, H34).</p>
+  </section>
+
+  <section>
+    <h2><span class="n">07</span>Risks</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td class="name">Confidential text reaches Jev</td><td><span class="tag no">critical finding</span></td><td>Conversation-wide egress check before every call; rows ④–⑥ disabled for confidential conversations; a test like <code>test_confidential_context_keeps_the_whole_conversation_on_the_box</code> for each Jev call</td></tr>
+          <tr><td class="name">Third-party code</td><td>Supply chain</td><td>Official <code>typesafe-ai</code> sources only; review the personal playbook repository before use; pin versions</td></tr>
+          <tr><td class="name">Latency and cost</td><td>Up to 2 extra network calls a turn</td><td>Per-call timeout; skip Jev for greetings and ticket-id lookups, which are decided in code today</td></tr>
+          <tr><td class="name">Vendor outage</td><td>Degraded decisions</td><td>Fallback to the current path; circuit breaker; nothing depends on Jev being up</td></tr>
+          <tr><td class="name">Miscalibrated probabilities</td><td>Confident wrong routes</td><td>Measure calibration in shadow mode; the code guards still run after Jev</td></tr>
+          <tr><td class="name">Tuning to the suite again</td><td>Overfitting</td><td>Keep eval cases out of Jev's question text (extend the prompt hygiene test); decide on the held-out suite</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">08</span>Open questions</h2>
+    <ul class="tight intro">
+      <li><b>For TypeSafe:</b> how long is request data retained, and is it used for training? Is there an on-premises or VPC deployment? What are the latency and throughput limits per key?</li>
+      <li><b>For the team lead:</b> may question text (never documents) go to Jev for internal users? Which decision point matters most: routing or false-premise correction?</li>
+      <li><b>For us:</b> does a probability on the route beat the current code guards on cases they were not written for?</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>The installation prompt this proposal started from is copied unchanged in
+      <a href="JEV_prompt.md"><code>JEV_prompt.md</code></a>. It installs Jev into a <i>coding agent</i> (Claude Code,
+      Codex, Cursor) to decide its own next steps. It was read, not executed. This proposal applies the same idea
+      to the assistant's request path instead.</p>
+    <p>Baseline figures: <code>evaluation/reports/router-guards-run.md</code> and <code>final-gaps-run.md</code>.
+      Constraints: README "Security and data boundaries", D-15, D-22, D-29, D-31, D-33.</p>
+  </footer>
+</div>
