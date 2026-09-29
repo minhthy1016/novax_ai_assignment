@@ -452,7 +452,7 @@ with. Everything it appears to demonstrate is enforced by the API.
 | **Retrieval inspector** | `POST /api/search` for the signed-in caller: rank, vector similarity, full-text rank, fused score, and *the matched passage next to the whole section the model receives* — the parent-child split, visible |
 | **Tickets** | Tickets you raised and your department's — a ticket is operational data, read by a tool and never indexed as a document ([D-63](docs/decisions/D-63-tickets-are-operational-data.md)) |
 | **Documents** | Upload a file and watch the worker index it; the server decides department and classification, not the file |
-| **Approvals** | Pending sensitive actions, with **Approve**, **Reject** and a deliberate *approve with a wrong hash* button to watch the check refuse it |
+| **Approvals** | Pending sensitive actions, with **Approve** and **Reject**. Below them, a small test link, *Test: approve with a mismatched hash*, sends a hash that does not match: the backend refuses it, audits the refusal, and the action stays pending |
 | **Audit** | The hash-chained trail for this caller, and `verify` for the whole chain |
 | **Memory** | What the assistant remembers, and deleting it |
 | **Models** | The catalog: availability, circuit state, **whether a model leaves our boundary**, and price per million tokens |
