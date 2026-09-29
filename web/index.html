@@ -26,6 +26,11 @@
   button { cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   button:disabled { opacity: .5; cursor: not-allowed; }
+  /* A control that exercises a safety check, kept visually apart from the real actions. */
+  .test-check { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+  button.test-link { background: none; border: 0; padding: 0; border-radius: 0; font-size: 12px;
+                     color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }
+  button.test-link:hover, button.test-link:focus-visible { color: var(--text); }
   .who { color: var(--muted); font-size: 13px; margin-left: auto; }
   nav { display: flex; gap: 4px; padding: 10px 16px 0; border-bottom: 1px solid var(--line);
         background: var(--panel); overflow-x: auto; }
@@ -466,8 +471,12 @@ async function loadActions() {
         ${a.status === "pending" ? `<div class="row" style="margin-top:10px">
           <button class="primary" data-approve="${esc(a.id)}" data-hash="${esc(a.action_hash)}">Approve</button>
           <button data-reject="${esc(a.id)}">Reject</button>
-          <button data-tamper="${esc(a.id)}">Approve with a wrong hash</button>
-        </div>` : `<pre>${esc(JSON.stringify(a.result, null, 2))}</pre>`}
+        </div>
+        <p class="test-check">
+          <button class="test-link" data-tamper="${esc(a.id)}"
+                  title="Sends a hash that does not match this action. The backend must refuse the approval and record the refusal in the audit log; the action stays pending.">Test: approve with a mismatched hash</button>
+          · the backend must refuse it and audit the refusal
+        </p>` : `<pre>${esc(JSON.stringify(a.result, null, 2))}</pre>`}
       </div>`).join("");
 }
 
