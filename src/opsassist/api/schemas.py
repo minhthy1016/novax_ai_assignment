@@ -142,6 +142,7 @@ class PendingActionOut(BaseModel):
     requester_id: str
     approver_id: str | None
     approve_permission: str
+    approver_ids: list[str] | None = None  # set when named people, not a permission, approve
     created_at: datetime
     expires_at: datetime
     result: dict[str, object] | None = None

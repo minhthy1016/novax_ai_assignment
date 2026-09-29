@@ -40,7 +40,13 @@ async def raise_ticket(
     )
     outcome = await executor.run_tool(principal, "create_support_ticket", body.model_dump(), ctx)
     return ToolOut(
-        name=outcome.tool, status=outcome.status, message=outcome.message, data=outcome.data
+        name=outcome.tool,
+        status=outcome.status,
+        message=outcome.message,
+        data=outcome.data,
+        # A requester with team leads gets a pending action to be approved (D-35).
+        pending_action_id=outcome.pending_action_id,
+        action_hash=outcome.action_hash,
     )
 
 

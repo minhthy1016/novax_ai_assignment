@@ -43,11 +43,14 @@ class UserFixture(BaseModel):
     department: str
     role: str
     permissions: list[str]
+    team_leads: list[str] = Field(default_factory=list)
 
     def model_post_init(self, _context: object) -> None:
         bad = [p for p in self.permissions if not PERMISSION_PATTERN.fullmatch(p)]
         if bad:
             raise ValueError(f"user {self.id}: malformed permissions {bad}")
+        if self.id in self.team_leads:
+            raise ValueError(f"user {self.id} cannot be their own team lead")
 
 
 class ServerFixture(BaseModel):
@@ -70,6 +73,10 @@ class Fixtures(BaseModel):
         referenced = {u.department for u in self.users} | {s.owner_department for s in self.servers}
         if missing := referenced - known:
             raise ValueError(f"fixtures reference unknown departments: {sorted(missing)}")
+        users = {u.id for u in self.users}
+        leads = {lead for u in self.users for lead in u.team_leads}
+        if unknown := leads - users:
+            raise ValueError(f"fixtures name unknown team leads: {sorted(unknown)}")
 
 
 def load_fixtures(data_dir: Path) -> Fixtures:

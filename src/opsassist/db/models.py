@@ -55,6 +55,8 @@ class User(Base):
     department: Mapped[str] = mapped_column(ForeignKey("departments.slug"))
     role: Mapped[str] = mapped_column(Text)
     permissions: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    # Users whose approval this user's support tickets need (D-35). Empty for most users.
+    team_leads: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -288,6 +290,9 @@ class PendingAction(Base):
     action_hash: Mapped[str] = mapped_column(Text)
     requires_permission: Mapped[str] = mapped_column(Text)
     approve_permission: Mapped[str] = mapped_column(Text)
+    # When set, only these users may approve (a relationship, e.g. the requester's team
+    # leads), instead of any holder of approve_permission.
+    approver_ids: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     status: Mapped[str] = mapped_column(Text, default="pending")
     approver_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     result: Mapped[dict[str, object] | None] = mapped_column(JSONB)

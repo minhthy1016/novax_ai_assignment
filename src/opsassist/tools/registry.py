@@ -120,6 +120,9 @@ class ToolSpec:
     names_record: tuple[str, ...] = ()
     sensitive: bool = False
     approve_permission: str | None = None  # a *different* holder must confirm
+    # For a requester who has team leads, the call waits for one of them to approve it
+    # (D-35). Everyone else runs it at once. Decided in code from the users table.
+    lead_approval: bool = False
 
     @property
     def effect(self) -> str:
@@ -168,6 +171,7 @@ TOOLS: dict[str, ToolSpec] = {
             "restart, a change to a system): never open a ticket on their behalf.",
         ),
         names_record=("ticket",),
+        lead_approval=True,
     ),
     "get_support_ticket": ToolSpec(
         name="get_support_ticket",

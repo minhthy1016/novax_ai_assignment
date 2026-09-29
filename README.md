@@ -23,7 +23,7 @@ database, never by prompting the model.
 >
 > Three documents, three audiences: **this README** is how the system fits together ·
 > [`architecture.md`](architecture.md) is the engineering architecture ·
-> [`docs/decisions/`](docs/decisions/README.md) holds the 37 decision records with their
+> [`docs/decisions/`](docs/decisions/README.md) holds the 38 decision records with their
 > alternatives and measurements. Requirement-by-requirement evidence is in
 > [`docs/traceability.md`](docs/traceability.md).
 
@@ -203,7 +203,7 @@ Each principle is implemented by specific decisions, recorded with their alterna
 ## Security and data boundaries
 
 The detail behind each line, with the decision records: [`architecture.md`](architecture.md#4-security-model-engineering-view).
-Run them all with `make test-security` (107 tests).
+Run them all with `make test-security` (118 tests).
 
 **Identity.** A bearer token names the user *and their role*; both are re-checked against the
 database on every request, so a role change or a deactivated account is refused immediately.
@@ -220,7 +220,10 @@ documents live in a separate index that is not even queried without the permissi
 execution and independently of anything the model proposed; arguments are validated against
 a typed schema. Sensitive actions (VPN profiles) are proposed, not executed: a **different**
 person holding the approve permission must confirm the exact action hash, and it runs once.
-There is no deploy, shell or SQL tool.
+Some approvals follow a relationship instead of a permission: a ticket raised by a user who
+has team leads (the AI Platform engineers, U007 and U008) waits until one of *their* leads
+approves it ([D-35](docs/decisions/D-35-team-lead-approval-for-supervised-users.md)). There
+is no deploy, shell or SQL tool.
 
 **What may leave the machine.** Every provider declares whether requests leave our boundary.
 The most sensitive classification in the retrieved context decides what is allowed;
@@ -265,6 +268,7 @@ Arguments, results and logs are redacted; provider keys live only in environment
 | Answer escalation to a larger local model; knowledge-gap ticket offered when nothing answers | ✅ [D-33](docs/decisions/D-33-answer-escalation.md) |
 | Near misses reviewed by a judge before abstaining | ✅ [gate-review-run](evaluation/reports/gate-review-run.md) |
 | Conversation summary of older turns sent to the model (summarised on-box only) | ✅ `memory.py` |
+| AI Platform engineers (U007 Tom, U008 Jerry): tickets approved by a team lead (U002 or U005) | ✅ [D-35](docs/decisions/D-35-team-lead-approval-for-supervised-users.md) · migration 0010 |
 | Egress decided on the whole conversation: after confidential context, every later turn stays on-box | ✅ [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) · migration 0009 |
 | Streaming goes through the same agent as `/api/chat` (tools, refusals, gap ticket) | ✅ `api/chat.py` |
 | Tool calls and approvals exported as metrics (`opsassist_tool_calls_total`) | ✅ `tools/executor.py` |
@@ -452,7 +456,7 @@ with. Everything it appears to demonstrate is enforced by the API.
 | **Retrieval inspector** | `POST /api/search` for the signed-in caller: rank, vector similarity, full-text rank, fused score, and *the matched passage next to the whole section the model receives* — the parent-child split, visible |
 | **Tickets** | Tickets you raised and your department's — a ticket is operational data, read by a tool and never indexed as a document ([D-63](docs/decisions/D-63-tickets-are-operational-data.md)) |
 | **Documents** | Upload a file and watch the worker index it; the server decides department and classification, not the file |
-| **Approvals** | Pending sensitive actions, with **Approve** and **Reject**. Below them, a small test link, *Test: approve with a mismatched hash*, sends a hash that does not match: the backend refuses it, audits the refusal, and the action stays pending |
+| **Approvals** | Pending actions you requested or may approve (by permission, or as a requester's team lead), with **Approve** and **Reject**. Below them, a small test link, *Test: approve with a mismatched hash*, sends a hash that does not match: the backend refuses it, audits the refusal, and the action stays pending |
 | **Audit** | The hash-chained trail for this caller, and `verify` for the whole chain |
 | **Memory** | What the assistant remembers, and deleting it |
 | **Models** | The catalog: availability, circuit state, **whether a model leaves our boundary**, and price per million tokens |
@@ -794,9 +798,9 @@ that nothing it says can be checked, and it has no notion of who is asking.
 ```bash
 make install            # local venv via uv
 make lint               # ruff + mypy (strict)
-make test               # unit tests (246), no services needed
-make test-integration   # integration tests (69) against the running stack
-make test-security      # security tests (115): authz, isolation, injection, audit, egress
+make test               # unit tests (251), no services needed
+make test-integration   # integration tests (72) against the running stack
+make test-security      # security tests (118): authz, isolation, injection, audit, egress
 make test-eval          # evaluation: the gold retrieval set through the running API
 make test-all           # everything
 ```
@@ -804,7 +808,7 @@ make test-all           # everything
 `make test-integration`, `make test-security` and `make test-eval` need `make up` and
 `make ingest` first. Security tests are tagged with a pytest marker and span both suites, so
 `make test-security` runs the unit-level policy tests and the end-to-end ones together;
-`uv run pytest -m "security and not integration"` runs only the 87 that need no services.
+`uv run pytest -m "security and not integration"` runs only the 89 that need no services.
 
 Deeper evaluation runs (they need Ollama, and the chunking comparison also needs the Docling
 export):
@@ -897,7 +901,7 @@ presentation's Vietnamese version is `docs/trinh-bay-hoi-dong.md` §7.
 
 | Area (marks) | Strongest evidence | Main gap |
 |---|---|---|
-| Architecture and code quality (15) | One vertical slice with typed contracts; 37 decision records with alternatives; 246 unit, 69 integration and 115 security tests; requirement → code → test in [`traceability.md`](docs/traceability.md) | `api/chat.py` (792 lines) repeats logic between the chat and stream paths |
+| Architecture and code quality (15) | One vertical slice with typed contracts; 38 decision records with alternatives; 251 unit, 72 integration and 118 security tests; requirement → code → test in [`traceability.md`](docs/traceability.md) | `api/chat.py` (792 lines) repeats logic between the chat and stream paths |
 | LLM integration (10) | Four providers behind one gateway: retry with backoff, fallback, circuit breaker, per-attempt usage and cost, fallback only before the first streamed token (D-10 to D-14) | Claude has never run live; streaming does not escalate |
 | RAG (15) | Parent-child chunking measured against 10 alternatives, with zero overlap justified; hybrid search + RRF; versioned re-indexing; citations with section locators; near misses reviewed before abstaining | False premises are not corrected; follow-up questions are not rewritten; no OCR |
 | Agent and tool calling (15) | Typed schemas, permission checks, two-person approval pinned by an action hash and executed once; no shell, SQL or deploy tool; tool results rendered from real data; router guards in code (T08, K08, H17, H34) | The guards read English sentence forms only |
