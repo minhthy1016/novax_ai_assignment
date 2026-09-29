@@ -260,6 +260,7 @@ def build_graph(deps: AgentDeps, checkpointer: BaseCheckpointSaver[Any] | None =
             decision = interrupt(
                 {
                     "awaiting": "approval",
+                    "tool": outcome.tool,
                     "pending_action_id": payload["pending_action_id"],
                     "action_hash": outcome.action_hash,
                     "summary": outcome.message,

@@ -29,7 +29,7 @@ async def test_seed_is_idempotent(sample_data_dir: Path) -> None:
     engine = create_engine(get_settings())
     try:
         async with engine.connect() as conn:
-            assert await conn.scalar(text("SELECT count(*) FROM users")) == 6
+            assert await conn.scalar(text("SELECT count(*) FROM users")) == 8
             assert await conn.scalar(text("SELECT count(*) FROM servers")) == 4
     finally:
         await engine.dispose()

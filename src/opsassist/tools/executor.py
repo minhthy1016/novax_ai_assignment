@@ -280,7 +280,25 @@ def authorize(principal: Principal, spec: ToolSpec) -> str | None:
     return None
 
 
+TEAM_LEAD = "team_lead"  # approve_permission label for actions approved by relationship
+
+
+async def team_leads_of(session: AsyncSession, user_id: str) -> list[str]:
+    user = await session.get(User, user_id)
+    return list(user.team_leads) if user is not None else []
+
+
+def may_approve(approver: Principal, pending: PendingAction) -> bool:
+    """Named approvers (a relationship, D-35) when the action lists them; otherwise any
+    holder of the approve permission (D-31). The requester is excluded separately."""
+    if pending.approver_ids:
+        return approver.user_id in pending.approver_ids
+    return approver.has(pending.approve_permission)
+
+
 def summarize(spec: ToolSpec, args: ToolArgs) -> str:
+    if spec.name == "create_support_ticket":
+        return f'Open a {args.severity} ticket "{args.title}"'  # type: ignore[attr-defined]
     if spec.name == "create_vpn_profile":
         who = getattr(args, "employee_id", None) or getattr(args, "employee_name", None)
         return f"Create a VPN profile for {who} valid for {args.duration_days} days"  # type: ignore[attr-defined]
@@ -335,7 +353,14 @@ async def _run_tool(
             log.info("tool_denied", tool=tool, user=principal.user_id, reason=denial)
             return ToolOutcome("denied", tool, f"You are not authorized: {denial}.")
 
-        if spec.sensitive:
+        leads = await team_leads_of(session, principal.user_id) if spec.lead_approval else []
+        if spec.sensitive or leads:
+            if leads and "details" in validated:
+                # Stored exactly as the lead will approve it: the requester's own words are
+                # added now, before the hash, because they are not at hand at execution.
+                validated["details"] = with_provenance(validated["details"], ctx.user_message)[
+                    :4000
+                ]
             digest = action_hash(tool, validated, principal.user_id)
             pending = PendingAction(
                 id=uuid.uuid4(),
@@ -346,27 +371,37 @@ async def _run_tool(
                 summary=summarize(spec, args),
                 action_hash=digest,
                 requires_permission=spec.requires_permission or "",
-                approve_permission=spec.approve_permission or "",
+                approve_permission=TEAM_LEAD if leads else spec.approve_permission or "",
+                approver_ids=leads or None,
                 request_id=ctx.request_id,
                 expires_at=datetime.now(UTC) + PENDING_TTL,
             )
             session.add(pending)
             await session.flush()
+            who = (
+                f"a team lead of the requester ({', '.join(leads)})"
+                if leads
+                else f"a different holder of {spec.approve_permission}"
+            )
             await audit.append(
                 session,
                 entry(
                     decision="pending",
                     arguments=validated,
-                    reason=f"awaiting approval by a different holder of {spec.approve_permission}",
+                    reason=f"awaiting approval by {who}",
                     pending_action_id=pending.id,
                     action_hash=digest,
                 ),
             )
+            needs = (
+                f"your team lead ({' or '.join(leads)})"
+                if leads
+                else f"someone with {spec.approve_permission}, who must be a different person"
+            )
             return ToolOutcome(
                 "pending",
                 tool,
-                f"{pending.summary}. This needs approval from someone with "
-                f"{spec.approve_permission}, who must be a different person.",
+                f"{pending.summary}. This needs approval from {needs}.",
                 pending_action_id=pending.id,
                 action_hash=digest,
             )
@@ -456,19 +491,23 @@ async def _approve_pending(
             pending.decided_at = func.now()
             await audit.append(session, entry(pending.tool, decision="deny", reason="expired"))
             return ToolOutcome("denied", pending.tool, "That action has expired.")
-        if not approver.has(pending.approve_permission):
+        if not may_approve(approver, pending):
+            if pending.approver_ids:
+                reason = "approver is not a team lead of the requester"
+                message = (
+                    "Only the requester's team lead "
+                    f"({' or '.join(pending.approver_ids)}) may approve this."
+                )
+            else:
+                reason = f"approver lacks {pending.approve_permission}"
+                message = f"You need the {pending.approve_permission} permission."
             await audit.append(
                 session,
                 entry(
-                    pending.tool,
-                    decision="deny",
-                    reason=f"approver lacks {pending.approve_permission}",
-                    action_hash=pending.action_hash,
+                    pending.tool, decision="deny", reason=reason, action_hash=pending.action_hash
                 ),
             )
-            return ToolOutcome(
-                "denied", pending.tool, f"You need the {pending.approve_permission} permission."
-            )
+            return ToolOutcome("denied", pending.tool, message)
         if approver.user_id == pending.requester_id:
             await audit.append(
                 session,
@@ -569,7 +608,7 @@ async def reject_pending(
         pending = await _load_for_decision(session, pending_id)
         if pending is None or pending.status != "pending":
             return ToolOutcome("denied", pending.tool if pending else "", "Nothing to reject.")
-        may_decide = approver.has(pending.approve_permission) or (
+        may_decide = may_approve(approver, pending) or (
             approver.user_id == pending.requester_id  # requesters may cancel their own request
         )
         if not may_decide:

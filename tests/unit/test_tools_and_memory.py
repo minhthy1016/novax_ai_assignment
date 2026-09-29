@@ -390,3 +390,35 @@ def test_a_conversation_keeps_its_most_sensitive_context() -> None:
     assert most_sensitive("unknown-label", "public") == "unknown-label"  # unknown = confidential
     settings = Settings(env="test")
     assert not settings.allows_egress(most_sensitive("confidential", "internal"))
+
+
+# ------------------------------------------------------------------ team-lead approval (D-35)
+
+
+def test_named_approvers_replace_the_permission_check() -> None:
+    from opsassist.db.models import PendingAction
+    from opsassist.tools.executor import TEAM_LEAD, may_approve
+
+    lead_approved = PendingAction(approve_permission=TEAM_LEAD, approver_ids=["U002", "U005"])
+    assert may_approve(principal("U005", "it_ops", "vpn:create"), lead_approved)
+    assert may_approve(principal("U002", "engineering"), lead_approved)
+    # A permission does not make someone a team lead, and a team lead needs no permission.
+    assert not may_approve(principal("U009", "it_ops", TEAM_LEAD, "vpn:approve"), lead_approved)
+
+    by_permission = PendingAction(approve_permission="vpn:approve", approver_ids=None)
+    assert may_approve(principal("U002", "engineering", "vpn:approve"), by_permission)
+    assert not may_approve(principal("U005", "it_ops", "vpn:create"), by_permission)
+
+
+def test_a_pending_ticket_is_summarised_by_what_it_opens() -> None:
+    from opsassist.tools.executor import summarize
+    from opsassist.tools.registry import CreateSupportTicketArgs
+
+    args = CreateSupportTicketArgs(title="Backfill job fails", severity="low", details="Fails.")
+    assert (
+        summarize(TOOLS["create_support_ticket"], args) == 'Open a low ticket "Backfill job fails"'
+    )
+    assert TOOLS["create_support_ticket"].lead_approval
+    assert not any(
+        spec.lead_approval for name, spec in TOOLS.items() if name != "create_support_ticket"
+    )

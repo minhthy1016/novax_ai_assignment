@@ -2,8 +2,9 @@
 
 Approval is an explicit, resumable confirmation of an exact action:
 
-* the approver must hold the approve permission and be a **different person** than the
-  requester (enforced in `tools/executor.py`, not here);
+* the approver must hold the approve permission, or be named on the action (a requester's
+  team lead, D-35), and be a **different person** than the requester (enforced in
+  `tools/executor.py`, not here);
 * the request body carries the **action hash**, so an approver can only confirm the
   arguments that were actually proposed;
 * after execution the requester's conversation is **resumed** from the point where it paused
@@ -17,7 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from langgraph.types import Command
-from sqlalchemy import or_, select
+from sqlalchemy import any_, or_, select
 
 from opsassist.agent.service import conversation_thread, describe_tool_result
 from opsassist.api.common import request_id_of
@@ -58,6 +59,7 @@ def _out(row: PendingAction) -> PendingActionOut:
         requester_id=row.requester_id,
         approver_id=row.approver_id,
         approve_permission=row.approve_permission,
+        approver_ids=row.approver_ids,
         created_at=row.created_at,
         expires_at=row.expires_at,
         result=row.result,
@@ -68,7 +70,8 @@ def _out(row: PendingAction) -> PendingActionOut:
 async def list_actions(
     request: Request, principal: CurrentPrincipal, status: str = "pending"
 ) -> Any:
-    """Actions you requested, plus those you are allowed to approve - nothing else."""
+    """Actions you requested, plus those you are allowed to approve - nothing else: by
+    permission (D-31), or because you are named as an approver, e.g. a team lead (D-35)."""
     approvable = [
         p for p in ("vpn:approve",) if principal.has(p)
     ]  # extend as sensitive tools are added
@@ -81,6 +84,7 @@ async def list_actions(
                     or_(
                         PendingAction.requester_id == principal.user_id,
                         PendingAction.approve_permission.in_(approvable or [""]),
+                        any_(PendingAction.approver_ids) == principal.user_id,
                     ),
                 )
                 .order_by(PendingAction.created_at.desc())

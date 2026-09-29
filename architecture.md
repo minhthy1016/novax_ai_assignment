@@ -141,6 +141,7 @@ reasoning stays available.
 | [D-32](docs/decisions/D-32-tamper-evident-audit.md) | Tamper-evident audit | Security |
 | [D-33](docs/decisions/D-33-answer-escalation.md) | Answer escalation: retry warning signs on a larger model, then ask the user | RAG |
 | [D-34](docs/decisions/D-34-prompts-hold-rules-cases-never-enter-prompts.md) | Prompts hold rules; skills come from the registry; cases never enter a prompt | Agent / Evaluation |
+| [D-35](docs/decisions/D-35-team-lead-approval-for-supervised-users.md) | Team-lead approval for tickets raised by supervised users | Security |
 | [D-40](docs/decisions/D-40-memory-allowlist-not-model-judgement.md) | Memory: allowlist, not model judgement | Memory |
 | [D-50](docs/decisions/D-50-evaluation-design.md) | Evaluation design: deterministic rules, judged prose | Evaluation |
 | [D-60](docs/decisions/D-60-scale-proposal-aws.md) | Scale proposal on AWS (5,000 employees, 1M documents) | Scale |
@@ -170,6 +171,7 @@ engineering level, each control is one of these, and each has its own record:
 | Confidential material in a separate index, on-box models only | migration 0004, gateway | [D-15](docs/decisions/D-15-data-classification-routing-to-providers-confirm.md) |
 | Retrieved text as escaped, unauthorized data; validated citations | `rag.py` | [D-25](docs/decisions/D-25-retrieved-content-is-untrusted.md) |
 | Typed tool schemas, permission checks, no shell/deploy/SQL tool | `tools/` | [D-29](docs/decisions/D-29-tool-contracts-and-what-the-model-may-influence.md) |
+| Team-lead approval: a ticket from a user with team leads waits for one of them (a relationship, not a permission) | `tools/executor.py`, migration 0010 | [D-35](docs/decisions/D-35-team-lead-approval-for-supervised-users.md) |
 | Two-person approval pinned by an action hash, executed once | `tools/executor.py` | [D-31](docs/decisions/D-31-sensitive-actions-propose-confirm-execute-once.md) |
 | Hash-chained, append-only audit written in the action's transaction | `policy/audit.py` | [D-32](docs/decisions/D-32-tamper-evident-audit.md) |
 | Upload confined to the uploader's department; metadata untrusted | `knowledge/upload.py` | [D-27](docs/decisions/D-27-upload-an-authorized-user-becomes-a-content-sour.md) |

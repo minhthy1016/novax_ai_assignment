@@ -67,5 +67,35 @@
       "docs:finance",
       "ticket:create"
     ]
+  },
+  {
+    "id": "U007",
+    "name": "Tom",
+    "department": "ai_platform",
+    "role": "Data Engineer",
+    "permissions": [
+      "docs:ai_platform",
+      "ticket:create"
+    ],
+    "team_leads": [
+      "U002",
+      "U005"
+    ]
+  },
+  {
+    "id": "U008",
+    "name": "Jerry",
+    "department": "ai_platform",
+    "role": "AI Engineer",
+    "permissions": [
+      "docs:ai_platform",
+      "server:read",
+      "ticket:create",
+      "kb:write:ai_platform"
+    ],
+    "team_leads": [
+      "U002",
+      "U005"
+    ]
   }
 ]

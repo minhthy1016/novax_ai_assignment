@@ -235,6 +235,8 @@ const USERS = [
   ["U004", "Farid Ismail", "hr", "HR Manager (hr:confidential)"],
   ["U005", "Priya Nair", "it_ops", "System Administrator (vpn:create)"],
   ["U006", "John Tan", "finance", "Finance Analyst"],
+  ["U007", "Tom", "ai_platform", "Data Engineer (tickets approved by U002 or U005)"],
+  ["U008", "Jerry", "ai_platform", "AI Engineer (tickets approved by U002 or U005)"],
 ];
 
 const state = { token: null, user: null, conversation: null };
@@ -464,7 +466,7 @@ async function loadActions() {
         <pre>${esc(JSON.stringify(a.arguments, null, 2))}</pre>
         <div class="stats">
           <span>requested by ${esc(a.requester_id)}</span>
-          <span>needs ${esc(a.approve_permission)}</span>
+          <span>needs ${a.approver_ids ? "team lead " + esc(a.approver_ids.join(" or ")) : esc(a.approve_permission)}</span>
           <span>expires ${esc(a.expires_at)}</span>
           <span class="mono">hash ${esc(a.action_hash.slice(0, 16))}…</span>
         </div>

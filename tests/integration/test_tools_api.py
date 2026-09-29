@@ -445,3 +445,72 @@ def test_tool_calls_are_exported_as_metrics(api: httpx.Client) -> None:
         'opsassist_tool_calls_total{decision="request",outcome="ok",tool="get_server_status"}'
         in metrics
     )
+
+
+# ------------------------------------------------------------------ team-lead approval (D-35)
+
+
+def raise_ticket(api: httpx.Client, user: str, title: str) -> dict:
+    resp = api.post(
+        "/api/tickets",
+        json={"title": title, "severity": "low", "details": f"{title}, seen since this morning."},
+        headers=auth(api, user),
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def pending_for(api: httpx.Client, user: str) -> dict[str, dict]:
+    rows = api.get("/api/actions", headers=auth(api, user)).json()
+    return {row["id"]: row for row in rows}
+
+
+@pytest.mark.security
+def test_a_ticket_from_a_supervised_user_waits_for_one_of_their_team_leads(
+    api: httpx.Client,
+) -> None:
+    title = f"Feature store backfill fails {time.time_ns()}"
+    proposed = raise_ticket(api, "U007", title)
+    assert proposed["status"] == "pending", proposed
+    assert "team lead (U002 or U005)" in proposed["message"]
+    action_id, digest = proposed["pending_action_id"], proposed["action_hash"]
+
+    # Only the requester and their team leads see it.
+    assert pending_for(api, "U002")[action_id]["approver_ids"] == ["U002", "U005"]
+    assert action_id in pending_for(api, "U005")
+    assert action_id in pending_for(api, "U007")
+    assert action_id not in pending_for(api, "U001")
+    assert action_id not in pending_for(api, "U008")  # a teammate is not a lead
+
+    def approve(user: str) -> dict:
+        resp = api.post(
+            f"/api/actions/{action_id}/approve",
+            json={"action_hash": digest},
+            headers=auth(api, user),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    for not_a_lead in ("U001", "U008", "U007"):  # a colleague, a teammate, the requester
+        assert approve(not_a_lead)["status"] == "denied"
+    done = approve("U005")
+    assert done["status"] == "ok" and done["data"]["title"] == title
+    assert approve("U002")["status"] == "denied"  # executed once only
+
+    mine = api.get("/api/tickets", headers=auth(api, "U007")).json()
+    assert any(t["title"] == title for t in mine)
+
+
+def test_a_ticket_from_a_user_without_team_leads_still_opens_at_once(api: httpx.Client) -> None:
+    opened = raise_ticket(api, "U001", f"Build agent disk full {time.time_ns()}")
+    assert opened["status"] == "ok" and opened["pending_action_id"] is None
+
+
+def test_a_supervised_user_raising_a_ticket_in_chat_gets_a_pending_ticket(
+    api: httpx.Client,
+) -> None:
+    body = ask(api, "U008", f"Raise a ticket: the GPU notebook kernel keeps dying {time.time_ns()}")
+    assert body["route"] == "tool"
+    tool = body["tool"]
+    assert (tool["name"], tool["status"]) == ("create_support_ticket", "pending")
+    assert "team lead" in tool["message"]
