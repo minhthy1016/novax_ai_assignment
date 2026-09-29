@@ -35,7 +35,7 @@ Check the current official TypeSafe instructions:
 
 For the working decision router examples for reference what it can do, inspect:
 
-- /Users/minhthy/Desktop/SEEK_payslips/LifeYo/TypeSafe/muse-jev-playbook
+- https://github.com/Bodila51/muse-jev-playbook
 - https://github.com/Bodila51/muse-jev-playbook/blob/main/QUICKSTART.md
 
 The official TypeSafe skill teaches you the API. The `muse-jev-playbook/*` repository provides routing code, recipes, and an agent policy. Treat these as separate components. Be careful from reading a personal git repo or third-party account instead of official repos from TypeSafe due to security threads rather than the official `typesafe-ai` org, it's worth reviewing that repo before handing it to Claude Code or another agent.
